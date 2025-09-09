@@ -1,6 +1,6 @@
 # Telegram Claude Bot
 
-![Bot Logo](img_start.png)
+<img src="src/main/resources/img_start.png" alt="Bot Logo" width="200" />
 
 **Telegram Claude Bot** — это Telegram-бот, использующий Anthropic Claude API для обработки сообщений и предоставления ответов на основе искусственного интеллекта. Бот поддерживает команды для получения информации, тестирования связи и взаимодействия с Claude AI. Проект написан на Java с использованием Spring Boot и библиотеки `telegrambots`.
 
@@ -57,17 +57,17 @@
    mvn clean install
    ```
 
-**(Опционально)** Настройте переменные окружения:
-   Вместо application.yml вы можете использовать переменные окружения:
-   ```bash
-   export TELEGRAM_BOT_TOKEN="your-telegram-bot-token"
-   export CLAUDE_API_KEY="your-claude-api-key"
-   export PROXY_ENABLED="true"
-   export PROXY_HOST="your-proxy-host"
-   export PROXY_PORT="your-proxy-port"
-   export PROXY_USERNAME="your-proxy-username"
-   export PROXY_PASSWORD="your-proxy-password"
-   ```
+   **(Опционально)** Настройте переменные окружения:
+     Вместо application.yml вы можете использовать переменные окружения:
+    ```bash
+    export TELEGRAM_BOT_TOKEN="your-telegram-bot-token"
+    export CLAUDE_API_KEY="your-claude-api-key"
+    export PROXY_ENABLED="true"
+    export PROXY_HOST="your-proxy-host"
+    export PROXY_PORT="your-proxy-port"
+    export PROXY_USERNAME="your-proxy-username"
+    export PROXY_PASSWORD="your-proxy-password"
+    ```
 
 4. **Запустите приложение**:
    ```bash
