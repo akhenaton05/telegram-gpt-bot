@@ -32,8 +32,8 @@
    ```
 2. **Создайте конфигурационный файл**:
    Скопируйте src/main/resources/application-template.yml в src/main/resources/application.yml.
-   Заполните application.yml вашими данными:yaml
-   ```bash
+   Заполните application.yml вашими данными:
+   ```yaml
    spring:
      main:
        web-application-type: none
@@ -69,7 +69,7 @@
    export PROXY_PASSWORD="your-proxy-password"
    ```
 
-4. **ЗапускЗапустите приложение**:
+4. **Запустите приложение**:
    ```bash
    mvn spring-boot:run
    ```
