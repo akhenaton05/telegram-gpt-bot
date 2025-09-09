@@ -13,4 +13,5 @@ public class ClaudeConfig {
     private String baseUrl;
     private String apiKey;
     private String model;
+    private String systemPrompt;
 }

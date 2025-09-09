@@ -20,7 +20,13 @@ import ru.practicum.config.ClaudeConfig;
 import ru.practicum.config.ProxyConfig;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Slf4j
 @Component
@@ -40,20 +46,17 @@ public class AnthropicClient {
     private CloseableHttpClient createHttpClient() {
         var clientBuilder = HttpClients.custom();
 
-        // Настройка таймаутов
         RequestConfig requestConfig = RequestConfig.custom()
                 .setConnectionRequestTimeout(Timeout.of(30, TimeUnit.SECONDS))
                 .setResponseTimeout(Timeout.of(60, TimeUnit.SECONDS))
                 .build();
         clientBuilder.setDefaultRequestConfig(requestConfig);
 
-        // Настройка прокси, если включено
         if (proxyConfig.isEnabled()) {
             log.info("Using proxy: {}:{}", proxyConfig.getHost(), proxyConfig.getPort());
             HttpHost proxy = new HttpHost(proxyConfig.getHost(), proxyConfig.getPort());
             clientBuilder.setProxy(proxy);
 
-            // Аутентификация прокси
             if (proxyConfig.getUsername() != null && !proxyConfig.getUsername().isEmpty()) {
                 log.info("Using proxy authentication for user: {}", proxyConfig.getUsername());
                 BasicCredentialsProvider credentialsProvider = new BasicCredentialsProvider();
@@ -70,14 +73,9 @@ public class AnthropicClient {
         return clientBuilder.build();
     }
 
-    public String sendMessage(String userMessage) {
-        if (claudeConfig.getApiKey().equals("test-mode")) {
-            log.info("Test mode: returning mock response");
-            return "🤖 Это тестовый ответ от Claude. Я получил ваше сообщение: \"" + userMessage + "\"\n\nДля работы с настоящим Claude нужно настроить Anthropic API ключ.";
-        }
-
+    public String sendMessage(String userMessage, List<Map<String, String>> history) {
         try {
-            String requestBody = createClaudeRequestBody(userMessage);
+            String requestBody = createClaudeRequestBody(userMessage, history);
             String apiUrl = claudeConfig.getBaseUrl() + "/v1/messages";
             HttpPost httpPost = new HttpPost(apiUrl);
 
@@ -96,13 +94,13 @@ public class AnthropicClient {
                     return parseClaudeResponse(responseBody);
                 } else if (response.getCode() == 429) {
                     log.error("Claude API quota exceeded: {}", responseBody);
-                    return "🚫 Превышена квота Claude API. Пожалуйста, проверьте баланс в аккаунте Anthropic.";
+                    return "Превышена квота Claude API. Пожалуйста, проверьте баланс в аккаунте Anthropic.";
                 } else if (response.getCode() == 401) {
                     log.error("Claude API authentication error: {}", responseBody);
-                    return "🔐 Ошибка авторизации Claude API. Проверьте API ключ Anthropic.";
+                    return "Ошибка авторизации Claude API. Проверьте API ключ Anthropic.";
                 } else {
                     log.error("Claude API error: Status {}, Response: {}", response.getCode(), responseBody);
-                    return "❌ Ошибка Claude API (код: " + response.getCode() + "). Попробуйте позже.";
+                    return "Ошибка Claude API (код: " + response.getCode() + "). Попробуйте позже.";
                 }
             }
         } catch (Exception e) {
@@ -111,25 +109,20 @@ public class AnthropicClient {
         }
     }
 
-    private String createClaudeRequestBody(String userMessage) throws Exception {
+    private String createClaudeRequestBody(String userMessage, List<Map<String, String>> history) throws Exception {
         String model = claudeConfig.getModel();
-        String json = """
-            {
-                "model": "%s",
-                "max_tokens": 1500,
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": "%s"
-                    }
-                ]
-            }
-            """.formatted(
-                model,
-                userMessage.replace("\"", "\\\"").replace("\n", "\\n")
-        );
+        String systemPrompt = claudeConfig.getSystemPrompt();
+        List<Map<String, String>> messages = new ArrayList<>(history);
+        messages.add(Map.of("role", "user", "content", userMessage));
 
-        log.debug("Using Claude model: {} for request", model);
+        Map<String, Object> requestBody = new HashMap<>();
+        requestBody.put("model", model);
+        requestBody.put("max_tokens", 1000);
+        requestBody.put("system", systemPrompt);
+        requestBody.put("messages", messages);
+
+        String json = objectMapper.writeValueAsString(requestBody);
+        log.debug("Using Claude model: {} for request with system prompt {}", model, systemPrompt);
         return json;
     }
 
@@ -140,13 +133,34 @@ public class AnthropicClient {
             JsonNode firstContent = content.get(0);
             if (firstContent.has("text")) {
                 String result = firstContent.get("text").asText().trim();
+                // Преобразуем Markdown код в HTML
+                result = convertMarkdownCodeToHtml(result);
                 log.debug("Received Claude response of length: {}", result.length());
                 return result;
             }
         }
-
         log.warn("Could not parse Claude response: {}", responseBody);
         return "Извините, не удалось получить ответ от Claude";
+    }
+
+    private String convertMarkdownCodeToHtml(String text) {
+        // Регулярное выражение для поиска Markdown кода (```language\n...\n```)
+        String regex = "```(\\w+)?\\n([\\s\\S]*?)\\n```";
+        Pattern pattern = Pattern.compile(regex);
+        Matcher matcher = pattern.matcher(text);
+        StringBuffer result = new StringBuffer();
+
+        while (matcher.find()) {
+            String language = matcher.group(1) != null ? matcher.group(1) : "";
+            String code = matcher.group(2);
+            // Экранируем HTML-символы в коде
+            String escapedCode = code.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+            // Формируем HTML-разметку
+            String htmlCode = "<pre><code class=\"language-" + language + "\">" + escapedCode + "</code></pre>";
+            matcher.appendReplacement(result, htmlCode);
+        }
+        matcher.appendTail(result);
+        return result.toString();
     }
 
     public void close() {

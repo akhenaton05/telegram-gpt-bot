@@ -8,8 +8,6 @@ import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.ActionType;
 import org.telegram.telegrambots.meta.api.methods.send.SendChatAction;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
-import org.telegram.telegrambots.meta.api.methods.send.SendPhoto;
-import org.telegram.telegrambots.meta.api.objects.InputFile;
 import org.telegram.telegrambots.meta.api.objects.Message;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
@@ -17,8 +15,11 @@ import ru.practicum.client.AnthropicClient;
 import ru.practicum.config.ClaudeConfig;
 import ru.practicum.config.ProxyConfig;
 import ru.practicum.config.TelegramBotConfig;
+import ru.practicum.utils.ConversationContext;
 
-import java.io.File;
+import java.time.Instant;
+import java.util.HashMap;
+import java.util.Map;
 
 @Slf4j
 @Service
@@ -28,6 +29,7 @@ public class TelegramChatService extends TelegramLongPollingBot {
     private final ProxyConfig proxyConfig;
     private final TelegramBotConfig telegramBotConfig;
     private final AnthropicClient anthropicClient;
+    private final ConversationContext context;
 
     @Override
     public String getBotUsername() {
@@ -58,9 +60,11 @@ public class TelegramChatService extends TelegramLongPollingBot {
             // Отправляем "печатает..." уведомление
             sendTypingAction(chatId);
 
-            // Синхронная обработка сообщения
+            // Обработка сообщения с контекстом
             try {
-                String response = anthropicClient.sendMessage(userMessage);
+                String response = anthropicClient.sendMessage(userMessage, context.getHistory(chatId));
+                context.addMessage(chatId, "user", userMessage);
+                context.addMessage(chatId, "assistant", response);
                 sendMessage(chatId, response);
             } catch (Exception e) {
                 log.error("Error processing message", e);
@@ -72,47 +76,51 @@ public class TelegramChatService extends TelegramLongPollingBot {
     private void handleCommand(Long chatId, String command) {
         switch (command) {
             case "/start":
-                startAction(String.valueOf(chatId));
-                break;
-
-            case "/help":
                 sendMessage(chatId,
-                        "Просто напишите мне любое сообщение, и я отвечу используя Claude AI.\n\n" +
-                                "Claude особенно хорош в:\n" +
-                                "- 📝 Написании текстов и статей\n" +
-                                "- 💻 Программировании и отладке кода\n" +
-                                "- 🔍 Анализе и резюмировании информации\n" +
-                                "- 🌍 Переводах и работе с языками\n" +
-                                "- 🤔 Решении сложных задач");
+                        "Просто напишите мне любое сообщение, и я отвечу используя Claude AI.<br><br>" +
+                                "<b>Claude особенно хорош в:</b><br>" +
+                                "- 📝 Написании текстов и статей<br>" +
+                                "- 💻 Программировании и отладке кода<br>" +
+                                "- 🔍 Анализе и резюмировании информации<br>" +
+                                "- 🌍 Переводах и работе с языками<br>" +
+                                "- 🤔 Решении сложных задач<br><br>" +
+                                "Используйте /clear, чтобы очистить контекст беседы.");
                 break;
 
             case "/info":
                 String modelInfo = claudeConfig.getModel().contains("haiku") ? "Claude 3 Haiku (быстрый и экономичный)"
                         : claudeConfig.getModel().contains("sonnet") ? "Claude 3 Sonnet (сбалансированный)"
                         : "Claude 3 Opus (самый умный)";
-
                 sendMessage(chatId,
-                        "🤖 Telegram Claude Bot\n" +
-                                "Версия: 1.0\n" +
-                                "Модель: " + modelInfo + "\n" +
-                                "API: Anthropic Claude\n" +
-                                "Прокси: " + (proxyConfig != null && proxyConfig.isEnabled() ? "включен" : "выключен") + "\n" +
+                        "🤖 <b>Telegram Claude Bot</b><br>" +
+                                "Версия: 1.0<br>" +
+                                "Модель: " + modelInfo + "<br>" +
+                                "API: Anthropic Claude<br>" +
+                                "Прокси: " + (proxyConfig.isEnabled() ? "включен" : "выключен") + "<br>" +
+                                "Контекст: до 10 сообщений<br>" +
                                 "Разработчик: @akhenaton05");
                 break;
 
             case "/test":
                 sendTypingAction(chatId);
                 try {
-                    String response = anthropicClient.sendMessage("Привет! Ответь кратко, что ты Claude от Anthropic и работаешь.");
-                    sendMessage(chatId, "✅ Тест связи с Claude:\n\n" + response);
+                    String response = anthropicClient.sendMessage("Привет! Ответь кратко, что ты Claude от Anthropic и работаешь.", context.getHistory(chatId));
+                    context.addMessage(chatId, "user", "Test connection");
+                    context.addMessage(chatId, "assistant", response);
+                    sendMessage(chatId, "✅ <b>Тест связи с Claude:</b><br><br>" + response);
                 } catch (Exception e) {
                     log.error("Test command error", e);
                     sendMessage(chatId, "❌ Ошибка при тестировании связи с Claude.");
                 }
                 break;
 
+            case "/clear":
+                context.clearHistory(chatId);
+                sendMessage(chatId, "🧹 Контекст беседы очищен.");
+                break;
+
             default:
-                sendMessage(chatId, "Неизвестная команда. Используйте /help для получения списка команд.");
+                sendMessage(chatId, "Неизвестная команда. Используйте /start, /info, /test или /clear.");
         }
     }
 
@@ -138,32 +146,6 @@ public class TelegramChatService extends TelegramLongPollingBot {
             execute(chatAction);
         } catch (Exception e) {
             log.debug("Could not send typing action", e);
-        }
-    }
-
-    private void startAction(String chatId) {
-        sendMessageWithPhoto(chatId,
-                "\uD83E\uDD11\uD83E\uDD11\uD83E\uDD11\uD83E\uDD11\uD83E\uDD11\uD83E\uDD11\uD83E\uDD11\uD83E\uDD11\uD83E\uDD11\uD83E\uDD11\uD83E\uDD11\uD83E\uDD11 \n \n" +
-                        "WELCOME TO *DELETZ GPT* (based on Claude AI) \n \n" +
-                        "\uD83E\uDDF1 /info - Deletz bot information \n" +
-                        "\uD83E\uDDEE /help - for a help\n" +
-                        "\uD83D\uDCE6 /test - to test connection with Claude \n \n" +
-                        "\uD83D\uDCB8\uD83D\uDCB8\uD83D\uDCB8\uD83D\uDCB8\uD83D\uDCB8\uD83D\uDCB8\uD83D\uDCB8\uD83D\uDCB8\uD83D\uDCB8\uD83D\uDCB8\uD83D\uDCB8\uD83D\uDCB8",
-                "img_start.png");
-    }
-
-    private void sendMessageWithPhoto(String chatId, String text, String image) {
-        SendPhoto msg = SendPhoto
-                .builder()
-                .chatId(chatId)
-                .photo(new InputFile(new File(image)))
-                .caption(text)
-                .parseMode("Markdown")
-                .build();
-        try {
-            execute(msg);
-        } catch (TelegramApiException e) {
-            log.error("Failed to send photo to Telegram chat {}: {}", chatId, e.getMessage());
         }
     }
 
