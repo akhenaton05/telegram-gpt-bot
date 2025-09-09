@@ -1,6 +1,6 @@
 # Telegram Claude Bot
 
-![Bot Logo](src/main/resources/img_start.png)
+![Bot Logo](img_start.png)
 
 **Telegram Claude Bot** — это Telegram-бот, использующий Anthropic Claude API для обработки сообщений и предоставления ответов на основе искусственного интеллекта. Бот поддерживает команды для получения информации, тестирования связи и взаимодействия с Claude AI. Проект написан на Java с использованием Spring Boot и библиотеки `telegrambots`.
 
