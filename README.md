@@ -1,17 +1,16 @@
 # Telegram Claude Bot
 
-**Telegram Claude Bot** — это Telegram-бот, использующий Anthropic Claude API для обработки сообщений и предоставления ответов на основе искусственного интеллекта. Бот поддерживает команды для получения информации, тестирования связи и взаимодействия с Claude AI. Проект написан на Java с использованием Spring Boot и библиотеки `telegrambots`.
+**Telegram Claude Bot** — это Telegram-бот, использующий модели ии для обработки сообщений\фото и предоставления ответов на основе искусственного интеллекта. Бот поддерживает команды для получения информации, тестирования связи и взаимодействия с выбранной моделью. Проект написан на Java с использованием Spring Boot и библиотеки `telegrambots`. Работать можно с моделями от OpenAi и Claude.
 
 ## Возможности
 
-- **Обработка сообщений**: Отправляйте текстовые сообщения, и бот ответит с помощью Claude AI.
+- **Обработка сообщений**: Отправляйте текстовые сообщения, и бот ответит с помощью ИИ.
 - **Команды**:
   - `/start` — Приветственное сообщение с информацией о боте.
   - `/help` — Список возможностей Claude AI (написание текстов, программирование, перевод и т.д.).
   - `/info` — Информация о боте, включая используемую модель Claude и статус прокси.
   - `/test` — Проверка связи с Claude API.
 - **Прокси-поддержка**: Настраиваемый прокси для обхода ограничений сети.
-- **Анти-спам**: Ограничение частоты сообщений (3 секунды между сообщениями).
 
 ## Требования
 
@@ -19,7 +18,8 @@
 - **Maven**: 3.6.0 или выше
 - **Telegram Bot Token**: Получите токен через [BotFather](https://t.me/BotFather)
 - **Anthropic API Key**: Получите ключ в [аккаунте Anthropic](https://www.anthropic.com)
-- (Опционально) Прокси-сервер для доступа к Anthropic API
+- **OpenAi API Key**: Получите ключ в [аккаунте OpenAi](https://www.openai.com)
+- (Опционально) Прокси-сервер для доступа к моделям
 
 ## Установка
 
@@ -39,6 +39,10 @@
      base-url: "${CLAUDE_BASE_URL:https://api.anthropic.com}"
      api-key: "${CLAUDE_API_KEY:your-claude-api-key}"
      model: "${CLAUDE_MODEL:claude-3-haiku-20240307}"
+   openai:
+    baseUrl: "${OPENAI_BASE_URL:https://api.openai.com/v1}"
+    apiKey: "${OPENAI_API_KEY:your-openai-api-key}"
+    model: "${OPENAI_MODEL:gpt-4.1-mini-2025-04-14}"
    telegrambot:
      botToken: "${TELEGRAM_BOT_TOKEN:your-telegram-bot-token}"
      botUsername: "${TELEGRAM_BOT_USERNAME:@gptdelbot}"
