@@ -8,11 +8,9 @@ import org.springframework.stereotype.Component;
 @Data
 @Slf4j
 @Component
-@ConfigurationProperties(prefix = "claude")
-public class ClaudeConfig implements BaseConfig {
+@ConfigurationProperties(prefix = "openai")
+public class OpenAiConfig implements BaseConfig {
     private String baseUrl;
     private String apiKey;
     private String model;
-    private String systemPrompt;
-    private String apiVersion;
 }
