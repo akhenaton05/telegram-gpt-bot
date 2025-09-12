@@ -107,7 +107,11 @@ public class OpenAiClient implements AiClient {
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put("model", model);
         requestBody.put("messages", messages);
-        requestBody.put("max_tokens", 1000);
+        if (model.equals("gpt-5-nano")) {
+            requestBody.put("max_completion_tokens", 2000); // Для OpenAI всегда max_tokens
+        } else {
+            requestBody.put("max_tokens", 1000);
+        }
         String json = objectMapper.writeValueAsString(requestBody);
         log.debug("Using OpenAI model: {} for request", model);
         return json;

@@ -71,13 +71,13 @@ public class TelegramChatService extends TelegramLongPollingBot {
 
             log.info("Received message from {}", chatId);
 
-            //Обработка фотографий
+            // Обработка фотографий
             if (message.hasPhoto()) {
                 handlePhotoMessage(chatId, message);
                 return;
             }
 
-            // Существующая обработка текстовых сообщений
+            // Обработка текстовых сообщений
             if (message.hasText()) {
                 String userMessage = message.getText();
                 log.info("Text message: {}", userMessage);
@@ -91,7 +91,7 @@ public class TelegramChatService extends TelegramLongPollingBot {
                 // Отправляем "печатает..." уведомление
                 sendTypingAction(chatId);
 
-                // Обработка сообщения с контекстом
+                // Обработка сообщения
                 try {
                     String response = aiClient.sendTextMessage(userMessage, context.getHistory(chatId));
                     context.addMessage(chatId, "user", userMessage);
@@ -108,7 +108,7 @@ public class TelegramChatService extends TelegramLongPollingBot {
         }
     }
 
-    // Обработка фотографий (синхронно)
+    // Обработка фотографий
     private void handlePhotoMessage(Long chatId, Message message) {
         log.info("Processing photo message from {}", chatId);
 
@@ -127,7 +127,7 @@ public class TelegramChatService extends TelegramLongPollingBot {
             // Получаем текст сообщения (если есть)
             String caption = message.getCaption() != null ? message.getCaption() : "Опиши что на изображении";
 
-            // Отправляем в Claude с контекстом
+            // Отправляем с контекстом
             String response = aiClient.sendMessageWithImage(caption, base64Image, context.getHistory(chatId));
 
             // Сохраняем в контекст и отправляем ответ
@@ -236,14 +236,8 @@ public class TelegramChatService extends TelegramLongPollingBot {
     }
 
     public void sendInfo(Long chatId) {
-        String modelInfo = claudeConfig.getModel().contains("haiku") ? "Claude 3.5 Haiku (быстрый и экономичный)"
-                : claudeConfig.getModel().contains("sonnet") ? "Claude 4 Sonnet (сбалансированный)"
-                : "Claude 4 Opus (самый умный)";
         sendMessage(chatId,
-                "🤖 <b>Telegram Claude Bot</b>\n" +
-                        "Версия: 1.1 (с поддержкой изображений)\n" +
-                        "Модель: " + modelInfo + "\n" +
-                        "API: Anthropic Claude\n" +
+                "🤖 <b>Telegram GPT Bot</b>\n" +
                         "Прокси: " + (proxyConfig.isEnabled() ? "включен" : "выключен") + "\n" +
                         "Контекст: до 7 сообщений\n" +
                         "Поддержка: текст + изображения\n" +
@@ -320,8 +314,8 @@ public class TelegramChatService extends TelegramLongPollingBot {
                 aiClient = new AnthropicClient(claudeConfig, proxyConfig);
             }
             case "Gpt 5 nano" -> {
-                claudeConfig.setModel("gpt-5-nano");
-                aiClient = new AnthropicClient(claudeConfig, proxyConfig);
+                openAiConfig.setModel("gpt-5-nano");
+                aiClient = new OpenAiClient(openAiConfig, proxyConfig);
             }
             case "Claude 3.5 Haiku" -> {
                 claudeConfig.setModel("claude-3-5-haiku-20241022");
