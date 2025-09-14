@@ -76,6 +76,12 @@
      apiKey: "${OPENAI_API_KEY:your-openai-api-key}"
      model: "${OPENAI_MODEL:gpt-4.1-mini-2025-04-14}"
 
+   # Конфигурация xAI Grok API
+   grok:
+     base-url: "${GROK_BASE_URL:https://api.x.ai/v1}"
+     api-key: "${GROK_API_KEY:your-xai-api-key}"
+     model: "${GROK_MODEL:grok-4}"
+
    # Конфигурация Telegram Bot
    telegrambot:
      botToken: "${TELEGRAM_BOT_TOKEN:your-telegram-bot-token}"
@@ -112,17 +118,6 @@
    mvn spring-boot:run
    ```
 
-## Поддерживаемые модели
-
-### OpenAI Models
-- **GPT-4.1 Mini** (`gpt-4.1-mini-2025-04-14`) - Быстрый и экономичный
-- **GPT-5 Nano** (`gpt-5-nano`) - Новейшая модель
-
-### Anthropic Claude Models  
-- **Claude 3 Haiku** (`claude-3-haiku-20240307`) - Быстрый и доступный
-- **Claude 3.5 Haiku** (`claude-3-5-haiku-20241022`) - Улучшенная версия
-- **Claude 4 Sonnet** (`claude-sonnet-4-20250514`) - Самый продвинутый
-
 ## Использование
 
 1. **Текстовые сообщения**: Просто напишите любой вопрос боту
@@ -145,17 +140,19 @@
 
 ## Структура проекта
 
-```
+```bash
 src/main/java/ru/practicum/
 ├── TelegramBotApplication.java     # Главный класс приложения
 ├── client/                         # AI клиенты
 │   ├── AiClient.java              # Интерфейс AI клиента
 │   ├── AiClientFactory.java       # Фабрика клиентов
 │   ├── AnthropicClient.java       # Claude API клиент
-│   └── OpenAiClient.java          # OpenAI API клиент
+│   ├── OpenAiClient.java          # OpenAI API клиент
+│   └── GrokClient.java            # xAI Grok API клиент
 ├── config/                        # Конфигурационные классы
 │   ├── ClaudeConfig.java          # Конфигурация Claude
 │   ├── OpenAiConfig.java          # Конфигурация OpenAI
+│   ├── GrokConfig.java            # Конфигурация Grok
 │   ├── ProxyConfig.java           # Конфигурация прокси
 │   └── TelegramBotConfig.java     # Конфигурация Telegram
 ├── service/
