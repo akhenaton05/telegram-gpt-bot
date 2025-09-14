@@ -16,14 +16,8 @@ import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
-import ru.practicum.client.AiClient;
-import ru.practicum.client.AiClientFactory;
-import ru.practicum.client.AnthropicClient;
-import ru.practicum.client.OpenAiClient;
-import ru.practicum.config.ClaudeConfig;
-import ru.practicum.config.OpenAiConfig;
-import ru.practicum.config.ProxyConfig;
-import ru.practicum.config.TelegramBotConfig;
+import ru.practicum.client.*;
+import ru.practicum.config.*;
 import ru.practicum.utils.ConversationContext;
 
 import java.io.InputStream;
@@ -37,14 +31,16 @@ import java.util.List;
 public class TelegramChatService extends TelegramLongPollingBot {
     private final ClaudeConfig claudeConfig;
     private final OpenAiConfig openAiConfig;
+    private final GrokConfig grokConfig;
     private final ProxyConfig proxyConfig;
     private final TelegramBotConfig telegramBotConfig;
     private final ConversationContext context;
     private AiClient aiClient;
 
-    public TelegramChatService(ClaudeConfig claudeConfig, OpenAiConfig openAiConfig, ProxyConfig proxyConfig, TelegramBotConfig telegramBotConfig, AiClientFactory aiClientFactory, ConversationContext context) {
+    public TelegramChatService(ClaudeConfig claudeConfig, OpenAiConfig openAiConfig, GrokConfig grokConfig, ProxyConfig proxyConfig, TelegramBotConfig telegramBotConfig, AiClientFactory aiClientFactory, ConversationContext context) {
         this.claudeConfig = claudeConfig;
         this.openAiConfig = openAiConfig;
+        this.grokConfig = grokConfig;
         this.proxyConfig = proxyConfig;
         this.telegramBotConfig = telegramBotConfig;
         this.context = context;
@@ -84,7 +80,7 @@ public class TelegramChatService extends TelegramLongPollingBot {
 
                 // Обработка команд
                 if (userMessage.startsWith("/")) {
-                    handleCommand(chatId, userMessage, update);
+                    handleCommand(chatId, userMessage);
                     return;
                 }
 
@@ -160,7 +156,7 @@ public class TelegramChatService extends TelegramLongPollingBot {
         }
     }
 
-    private void handleCommand(Long chatId, String command, Update update) throws TelegramApiException {
+    private void handleCommand(Long chatId, String command) throws TelegramApiException {
         switch (command) {
             case "/start":
                 sendStartMessage(chatId);
@@ -171,8 +167,7 @@ public class TelegramChatService extends TelegramLongPollingBot {
                 break;
 
             case "/history":
-                sendMessage(chatId, "📝 Текущий контекст:");
-                context.getHistory(chatId);
+                sendMessage(chatId, "📝 Текущий контекст: " + context.getHistory(chatId));
                 break;
 
             case "/clear":
@@ -279,13 +274,22 @@ public class TelegramChatService extends TelegramLongPollingBot {
         inlineKeyboardButton5.setCallbackData("Claude 4 Sonnet");
         rowInline3.add(inlineKeyboardButton5);
 
+        List<InlineKeyboardButton> rowInline4 = new ArrayList<>();
+        InlineKeyboardButton inlineKeyboardButton6 = new InlineKeyboardButton();
+        inlineKeyboardButton6.setText("Grok 4");
+        inlineKeyboardButton6.setCallbackData("Grok 4");
+        InlineKeyboardButton inlineKeyboardButton7 = new InlineKeyboardButton();
+        inlineKeyboardButton7.setText("Grok 3 mini");
+        inlineKeyboardButton7.setCallbackData("Grok 3 mini");
+        rowInline4.add(inlineKeyboardButton6);
+        rowInline4.add(inlineKeyboardButton7);
+
         rowsInline.add(rowInline1);
         rowsInline.add(rowInline2);
+        rowsInline.add(rowInline4);
         rowsInline.add(rowInline3);
 
-        System.out.println("rowsInline");
         markupInline.setKeyboard(rowsInline);
-        System.out.println("AFTER");
         message.setReplyMarkup(markupInline);
 
         return message;
@@ -324,6 +328,14 @@ public class TelegramChatService extends TelegramLongPollingBot {
             case "Claude 4 Sonnet" -> {
                 claudeConfig.setModel("claude-sonnet-4-20250514");
                 aiClient = new AnthropicClient(claudeConfig, proxyConfig);
+            }
+            case "Grok 4" -> {
+                grokConfig.setModel("grok-code-fast-1");
+                aiClient = new GrokClient(grokConfig, proxyConfig);
+            }
+            case "Grok 3 mini" -> {
+                grokConfig.setModel("grok-3-mini");
+                aiClient = new GrokClient(grokConfig, proxyConfig);
             }
             default -> {
                 log.warn("Unknown callback data: {}", callData);
