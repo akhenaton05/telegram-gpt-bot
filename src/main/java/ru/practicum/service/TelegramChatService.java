@@ -10,6 +10,7 @@ import org.telegram.telegrambots.meta.api.methods.AnswerCallbackQuery;
 import org.telegram.telegrambots.meta.api.methods.GetFile;
 import org.telegram.telegrambots.meta.api.methods.send.SendChatAction;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
+import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
 import org.telegram.telegrambots.meta.api.objects.Message;
 import org.telegram.telegrambots.meta.api.objects.PhotoSize;
 import org.telegram.telegrambots.meta.api.objects.Update;
@@ -32,15 +33,19 @@ public class TelegramChatService extends TelegramLongPollingBot {
     private final ClaudeConfig claudeConfig;
     private final OpenAiConfig openAiConfig;
     private final GrokConfig grokConfig;
+    private final SonarConfig sonarConfig;
+    private final GeminiConfig geminiConfig;
     private final ProxyConfig proxyConfig;
     private final TelegramBotConfig telegramBotConfig;
     private final ConversationContext context;
     private AiClient aiClient;
 
-    public TelegramChatService(ClaudeConfig claudeConfig, OpenAiConfig openAiConfig, GrokConfig grokConfig, ProxyConfig proxyConfig, TelegramBotConfig telegramBotConfig, AiClientFactory aiClientFactory, ConversationContext context) {
+    public TelegramChatService(ClaudeConfig claudeConfig, OpenAiConfig openAiConfig, GrokConfig grokConfig, SonarConfig sonarConfig, GeminiConfig geminiConfig, ProxyConfig proxyConfig, TelegramBotConfig telegramBotConfig, AiClientFactory aiClientFactory, ConversationContext context) {
         this.claudeConfig = claudeConfig;
         this.openAiConfig = openAiConfig;
         this.grokConfig = grokConfig;
+        this.sonarConfig = sonarConfig;
+        this.geminiConfig = geminiConfig;
         this.proxyConfig = proxyConfig;
         this.telegramBotConfig = telegramBotConfig;
         this.context = context;
@@ -100,7 +105,7 @@ public class TelegramChatService extends TelegramLongPollingBot {
             }
             // Обработка кнопки
         }  else if (update.hasCallbackQuery()) {
-            updateModelsButton(update.getCallbackQuery().getId(), update.getCallbackQuery().getData());
+            updateModelsButton(update.getCallbackQuery());
         }
     }
 
@@ -183,23 +188,29 @@ public class TelegramChatService extends TelegramLongPollingBot {
                 sendMessage(chatId, "Неизвестная команда.\n\n" +
                         "Доступные команды:\n" +
                         "/start - справка по использованию\n" +
-                        "/info - информация о модели\n" +
+                        "/info - справка по использованию\n" +
+                        "/models - выбор модели\n" +
                         "/history - история контекста\n" +
                         "/clear - очистить контекст");
         }
     }
 
     private void sendMessage(Long chatId, String text) {
-        SendMessage message = new SendMessage();
-        message.setChatId(chatId);
-        message.setText(text);
-        message.setParseMode("HTML");
+        final int TG_LIMIT = 4096;
 
-        try {
-            execute(message);
-            log.info("Message sent to {}: {}", chatId, text.substring(0, Math.min(50, text.length())) + "...");
-        } catch (TelegramApiException e) {
-            log.error("Error sending message to {}", chatId, e);
+        for (String chunk : splitMessage(text, TG_LIMIT)) {
+            SendMessage msg = new SendMessage();
+            msg.setChatId(chatId);
+            msg.setText(chunk);
+            msg.setParseMode("HTML");
+
+            try {
+                execute(msg);
+                log.info("Chunk sent to {} ({} симв.)", chatId, chunk.length());
+            } catch (TelegramApiException e) {
+                log.error("Error sending chunk to {}", chatId, e);
+                break;
+            }
         }
     }
 
@@ -245,49 +256,76 @@ public class TelegramChatService extends TelegramLongPollingBot {
         message.setText("Выбери модель из представленных ниже:");
 
         InlineKeyboardMarkup markupInline = new InlineKeyboardMarkup();
-
         List<List<InlineKeyboardButton>> rowsInline = new ArrayList<>();
 
+        // OpenAi
         List<InlineKeyboardButton> rowInline1 = new ArrayList<>();
         InlineKeyboardButton inlineKeyboardButton1 = new InlineKeyboardButton();
-        inlineKeyboardButton1.setText("Gpt 4.1 mini");
+        inlineKeyboardButton1.setText("Gpt 4.1 Mini");
         inlineKeyboardButton1.setCallbackData("Gpt 4.1 mini");
         InlineKeyboardButton inlineKeyboardButton2 = new InlineKeyboardButton();
-        inlineKeyboardButton2.setText("Claude 3 Haiku");
-        inlineKeyboardButton2.setCallbackData("Claude 3 Haiku");
+        inlineKeyboardButton2.setText("Gpt 5 Nano");
+        inlineKeyboardButton2.setCallbackData("Gpt 5 nano");
         rowInline1.add(inlineKeyboardButton1);
         rowInline1.add(inlineKeyboardButton2);
 
+        // AnthropicAi
         List<InlineKeyboardButton> rowInline2 = new ArrayList<>();
         InlineKeyboardButton inlineKeyboardButton3 = new InlineKeyboardButton();
-        inlineKeyboardButton3.setText("Gpt 5 nano");
-        inlineKeyboardButton3.setCallbackData("Gpt 5 nano");
+        inlineKeyboardButton3.setText("Claude 3 Haiku");
+        inlineKeyboardButton3.setCallbackData("Claude 3 Haiku");
         InlineKeyboardButton inlineKeyboardButton4 = new InlineKeyboardButton();
         inlineKeyboardButton4.setText("Claude 3.5 Haiku");
         inlineKeyboardButton4.setCallbackData("Claude 3.5 Haiku");
         rowInline2.add(inlineKeyboardButton3);
         rowInline2.add(inlineKeyboardButton4);
 
+        // AnthropicAi
         List<InlineKeyboardButton> rowInline3 = new ArrayList<>();
         InlineKeyboardButton inlineKeyboardButton5 = new InlineKeyboardButton();
         inlineKeyboardButton5.setText("Claude 4 Sonnet");
         inlineKeyboardButton5.setCallbackData("Claude 4 Sonnet");
         rowInline3.add(inlineKeyboardButton5);
 
+        // xAi
         List<InlineKeyboardButton> rowInline4 = new ArrayList<>();
         InlineKeyboardButton inlineKeyboardButton6 = new InlineKeyboardButton();
         inlineKeyboardButton6.setText("Grok 4");
         inlineKeyboardButton6.setCallbackData("Grok 4");
         InlineKeyboardButton inlineKeyboardButton7 = new InlineKeyboardButton();
-        inlineKeyboardButton7.setText("Grok 3 mini");
+        inlineKeyboardButton7.setText("Grok 3 Mini");
         inlineKeyboardButton7.setCallbackData("Grok 3 mini");
         rowInline4.add(inlineKeyboardButton6);
         rowInline4.add(inlineKeyboardButton7);
 
+        // PerplexityAi
+        List<InlineKeyboardButton> rowInline5 = new ArrayList<>();
+        InlineKeyboardButton inlineKeyboardButton8 = new InlineKeyboardButton();
+        inlineKeyboardButton8.setText("Sonar");
+        inlineKeyboardButton8.setCallbackData("Sonar");
+        rowInline5.add(inlineKeyboardButton8);
+        InlineKeyboardButton inlineKeyboardButton9 = new InlineKeyboardButton();
+        inlineKeyboardButton9.setText("Sonar Pro");
+        inlineKeyboardButton9.setCallbackData("Sonar Pro");
+        rowInline5.add(inlineKeyboardButton9);
+
+        // Gemini
+        List<InlineKeyboardButton> rowInline6 = new ArrayList<>();
+        InlineKeyboardButton inlineKeyboardButton10 = new InlineKeyboardButton();
+        inlineKeyboardButton10.setText("Gemini 2.5 Flash");
+        inlineKeyboardButton10.setCallbackData("Gemini 2.5 Flash");
+        InlineKeyboardButton inlineKeyboardButton11 = new InlineKeyboardButton();
+        inlineKeyboardButton11.setText("Gemini 2.5 Pro");
+        inlineKeyboardButton11.setCallbackData("Gemini 2.5 Pro");
+        rowInline6.add(inlineKeyboardButton10);
+        rowInline6.add(inlineKeyboardButton11);
+
         rowsInline.add(rowInline1);
         rowsInline.add(rowInline2);
-        rowsInline.add(rowInline4);
         rowsInline.add(rowInline3);
+        rowsInline.add(rowInline4);
+        rowsInline.add(rowInline5);
+        rowsInline.add(rowInline6);
 
         markupInline.setKeyboard(rowsInline);
         message.setReplyMarkup(markupInline);
@@ -295,11 +333,13 @@ public class TelegramChatService extends TelegramLongPollingBot {
         return message;
     }
 
-    private void updateModelsButton(String callbackQueryId, String callData) {
-        // Подтверждение
+    private void updateModelsButton(CallbackQuery callbackQuery) {
+        String callbackQueryId = callbackQuery.getId();
+        String callData = callbackQuery.getData();
+        Long chatId = callbackQuery.getMessage().getChatId();
+
         AnswerCallbackQuery answer = new AnswerCallbackQuery();
         answer.setCallbackQueryId(callbackQueryId);
-        answer.setText("Модель " + callData + " выбрана!");
         answer.setShowAlert(false);
         try {
             execute(answer);
@@ -312,35 +352,93 @@ public class TelegramChatService extends TelegramLongPollingBot {
             case "Gpt 4.1 mini" -> {
                 openAiConfig.setModel("gpt-4.1-mini-2025-04-14");
                 aiClient = new OpenAiClient(openAiConfig, proxyConfig);
-            }
-            case "Claude 3 Haiku" -> {
-                claudeConfig.setModel("claude-3-haiku-20240307");
-                aiClient = new AnthropicClient(claudeConfig, proxyConfig);
+                sendMessage(chatId, "Выбрана модель: Gpt 4.1 mini (OpenAi)");
+                context.clearHistory(chatId);
             }
             case "Gpt 5 nano" -> {
                 openAiConfig.setModel("gpt-5-nano");
                 aiClient = new OpenAiClient(openAiConfig, proxyConfig);
+                sendMessage(chatId, "Выбрана модель: Gpt 5 Nano (OpenAi)");
+                context.clearHistory(chatId);
+            }
+            case "Claude 3 Haiku" -> {
+                claudeConfig.setModel("claude-3-haiku-20240307");
+                aiClient = new AnthropicClient(claudeConfig, proxyConfig);
+                sendMessage(chatId, "Выбрана модель: Claude 3 Haiku (AnthropicAi)");
+                context.clearHistory(chatId);
             }
             case "Claude 3.5 Haiku" -> {
                 claudeConfig.setModel("claude-3-5-haiku-20241022");
                 aiClient = new AnthropicClient(claudeConfig, proxyConfig);
+                sendMessage(chatId, "Выбрана модель: Claude 3.5 Haiku (AnthropicAi)");
+                context.clearHistory(chatId);
             }
             case "Claude 4 Sonnet" -> {
                 claudeConfig.setModel("claude-sonnet-4-20250514");
                 aiClient = new AnthropicClient(claudeConfig, proxyConfig);
+                sendMessage(chatId, "Выбрана модель: Claude 4 Sonnet (AnthropicAi)");
+                context.clearHistory(chatId);
             }
             case "Grok 4" -> {
                 grokConfig.setModel("grok-code-fast-1");
                 aiClient = new GrokClient(grokConfig, proxyConfig);
+                sendMessage(chatId, "Выбрана модель: Grok 4 (xAi)");
+                context.clearHistory(chatId);
             }
             case "Grok 3 mini" -> {
                 grokConfig.setModel("grok-3-mini");
                 aiClient = new GrokClient(grokConfig, proxyConfig);
+                sendMessage(chatId, "Выбрана модель: Grok 3 Mini (xAi)");
+                context.clearHistory(chatId);
+            }
+            case "Sonar" -> {
+                sonarConfig.setModel("sonar");
+                aiClient = new SonarClient(sonarConfig, proxyConfig);
+                sendMessage(chatId, "Выбрана модель: Sonar (PerplexityAi)");
+                context.clearHistory(chatId);
+            }
+            case "Sonar Pro" -> {
+                sonarConfig.setModel("sonar-pro");
+                aiClient = new SonarClient(sonarConfig, proxyConfig);
+                sendMessage(chatId, "Выбрана модель: Sonar Pro (PerplexityAi)");
+                context.clearHistory(chatId);
+            }
+            case "Gemini 2.5 Flash" -> {
+                geminiConfig.setModel("gemini-2.5-flash");
+                aiClient = new GeminiClient(geminiConfig, proxyConfig);
+                sendMessage(chatId, "Выбрана модель: Gemini 2.5 Flash (Gemini)");
+                context.clearHistory(chatId);
+            }
+            case "Gemini 2.5 Pro" -> {
+                geminiConfig.setModel("gemini-2.5-pro");
+                aiClient = new GeminiClient(geminiConfig, proxyConfig);
+                sendMessage(chatId, "Выбрана модель: Gemini 2.5 Pro (Gemini)");
+                context.clearHistory(chatId);
             }
             default -> {
                 log.warn("Unknown callback data: {}", callData);
             }
         }
+    }
+
+    private List<String> splitMessage(String text, int maxLength) {
+        List<String> parts = new ArrayList<>();
+        int start = 0;
+
+        while (start < text.length()) {
+            int end = Math.min(start + maxLength, text.length());
+
+            // ищем \n внутри последней трети куска
+            int lastBreak = text.lastIndexOf('\n', end);
+            if (lastBreak == -1 || lastBreak < start + (int)(maxLength * 0.7)) {
+                // перенос слишком близко к началу – игнорируем
+                lastBreak = end;
+            }
+
+            parts.add(text.substring(start, lastBreak));
+            start = lastBreak;
+        }
+        return parts;
     }
 
     @PreDestroy
