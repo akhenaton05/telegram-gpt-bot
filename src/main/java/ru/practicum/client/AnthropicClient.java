@@ -11,14 +11,13 @@ import org.apache.hc.core5.http.io.entity.StringEntity;
 import org.springframework.stereotype.Component;
 import ru.practicum.config.ClaudeConfig;
 import ru.practicum.config.ProxyConfig;
+import ru.practicum.utils.MarkdownToHtmlConverter;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 @Slf4j
 @Component
@@ -26,11 +25,13 @@ public class AnthropicClient implements AiClient {
     private final ClaudeConfig claudeConfig;
     private final ObjectMapper objectMapper;
     private final CloseableHttpClient httpClient;
+    private final MarkdownToHtmlConverter markdownConverter;
 
     public AnthropicClient(ClaudeConfig claudeConfig, ProxyConfig proxyConfig) {
         this.claudeConfig = claudeConfig;
         this.objectMapper = new ObjectMapper();
         this.httpClient = proxyConfig.createHttpClient();
+        this.markdownConverter = new MarkdownToHtmlConverter();
     }
 
     public String sendMessageWithImage(String userMessage, String base64Image, List<Map<String, String>> history) {
@@ -160,38 +161,17 @@ public class AnthropicClient implements AiClient {
     private String parseClaudeResponse(String responseBody) throws Exception {
         JsonNode jsonNode = objectMapper.readTree(responseBody);
         JsonNode content = jsonNode.get("content");
-        if (content != null && content.isArray() && content.size() > 0) {
+        if (content != null && content.isArray() && !content.isEmpty()) {
             JsonNode firstContent = content.get(0);
             if (firstContent.has("text")) {
                 String result = firstContent.get("text").asText().trim();
-                // Преобразуем Markdown код в HTML
-                result = convertMarkdownCodeToHtml(result);
+                result = markdownConverter.convertMarkdownToTelegramHtml(result);
                 log.debug("Received Claude response of length: {}", result.length());
                 return result;
             }
         }
         log.warn("Could not parse Claude response: {}", responseBody);
         return "Извините, не удалось получить ответ от Claude";
-    }
-
-    private String convertMarkdownCodeToHtml(String text) {
-        // Регулярное выражение для поиска Markdown кода (```language\n...\n```)
-        String regex = "```(\\w+)?\\n([\\s\\S]*?)\\n```";
-        Pattern pattern = Pattern.compile(regex);
-        Matcher matcher = pattern.matcher(text);
-        StringBuffer result = new StringBuffer();
-
-        while (matcher.find()) {
-            String language = matcher.group(1) != null ? matcher.group(1) : "";
-            String code = matcher.group(2);
-            // Экранируем HTML-символы в коде
-            String escapedCode = code.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
-            // Формируем HTML-разметку
-            String htmlCode = "<pre><code class=\"language-" + language + "\">" + escapedCode + "</code></pre>";
-            matcher.appendReplacement(result, htmlCode);
-        }
-        matcher.appendTail(result);
-        return result.toString();
     }
 
     public void close() {

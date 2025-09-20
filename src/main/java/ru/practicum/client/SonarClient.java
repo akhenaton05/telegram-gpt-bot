@@ -11,14 +11,13 @@ import org.apache.hc.core5.http.io.entity.StringEntity;
 import org.springframework.stereotype.Component;
 import ru.practicum.config.ProxyConfig;
 import ru.practicum.config.SonarConfig;
+import ru.practicum.utils.MarkdownToHtmlConverter;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 @Slf4j
 @Component
@@ -26,11 +25,13 @@ public class SonarClient implements AiClient {
     private final SonarConfig sonarConfig;
     private final ObjectMapper objectMapper;
     private final CloseableHttpClient httpClient;
+    private final MarkdownToHtmlConverter markdownConverter;
 
     public SonarClient(SonarConfig sonarConfig, ProxyConfig proxyConfig) {
         this.sonarConfig = sonarConfig;
         this.objectMapper = new ObjectMapper();
         this.httpClient = proxyConfig.createHttpClient();
+        this.markdownConverter = new MarkdownToHtmlConverter();
     }
 
     @Override
@@ -103,14 +104,17 @@ public class SonarClient implements AiClient {
         }
     }
 
-    // Валидация и исправление чередования ролей
-    private List<Map<String, String>> validateAndFixMessageRoles(List<Map<String, String>> history) {
+    // Perplexity требует строгого чередования user/assistant после system сообщений
+    private List<Map<String, String>> fixPerplexityMessageStructure(List<Map<String, String>> history) {
         if (history == null || history.isEmpty()) {
             return new ArrayList<>();
         }
 
-        List<Map<String, String>> validatedMessages = new ArrayList<>();
-        String lastRole = null;
+        List<Map<String, String>> fixedMessages = new ArrayList<>();
+
+        // Разделяем сообщения на system и диалоговые
+        List<Map<String, String>> systemMessages = new ArrayList<>();
+        List<Map<String, String>> conversationMessages = new ArrayList<>();
 
         for (Map<String, String> message : history) {
             String role = message.get("role");
@@ -121,38 +125,55 @@ public class SonarClient implements AiClient {
                 continue;
             }
 
-            // Пропускаем сообщения с той же ролью, что и предыдущее
-            if (role.equals(lastRole)) {
-                log.debug("Skipping message with duplicate role: {}", role);
-                continue;
+            if ("system".equals(role)) {
+                systemMessages.add(message);
+            } else if ("user".equals(role) || "assistant".equals(role)) {
+                conversationMessages.add(message);
             }
-
-            validatedMessages.add(message);
-            lastRole = role;
         }
 
-        return validatedMessages;
+        // Добавляем системные сообщения в начало
+        fixedMessages.addAll(systemMessages);
+
+        // Исправляем чередование user/assistant для диалога
+        if (!conversationMessages.isEmpty()) {
+            String expectedRole = "user"; // Диалог должен начинаться с user
+
+            for (Map<String, String> message : conversationMessages) {
+                String role = message.get("role");
+                String content = message.get("content");
+
+                if (expectedRole.equals(role)) {
+                    // Роль соответствует ожидаемой - добавляем сообщение
+                    fixedMessages.add(message);
+                    expectedRole = expectedRole.equals("user") ? "assistant" : "user";
+                } else if ("user".equals(role) && "assistant".equals(expectedRole)) {
+                    // Пропущен assistant ответ - добавляем фиктивный
+                    fixedMessages.add(Map.of("role", "assistant", "content", "Понял."));
+                    fixedMessages.add(message);
+                    expectedRole = "assistant";
+                } else if ("assistant".equals(role) && "user".equals(expectedRole)) {
+                    // Лишний assistant ответ - пропускаем
+                    log.debug("Skipping redundant assistant message: {}", content.substring(0, Math.min(50, content.length())));
+                    continue;
+                }
+            }
+        }
+
+        log.debug("Fixed message structure: {} -> {} messages", history.size(), fixedMessages.size());
+        return fixedMessages;
     }
 
     private String createSonarRequestBody(String userMessage, List<Map<String, String>> history) throws Exception {
         String model = sonarConfig.getModel();
         List<Map<String, Object>> messages = new ArrayList<>();
 
-        // Валидируем и исправляем историю сообщений
-        List<Map<String, String>> validHistory = validateAndFixMessageRoles(history);
+        // Исправляем структуру сообщений для Perplexity API
+        List<Map<String, String>> fixedHistory = fixPerplexityMessageStructure(history);
 
-        // Добавляем валидированную историю
-        for (Map<String, String> historyMessage : validHistory) {
+        // Добавляем исправленную историю
+        for (Map<String, String> historyMessage : fixedHistory) {
             messages.add(Map.of("role", historyMessage.get("role"), "content", historyMessage.get("content")));
-        }
-
-        // Проверяем, что последнее сообщение в истории не user
-        if (!messages.isEmpty()) {
-            Map<String, Object> lastMessage = messages.get(messages.size() - 1);
-            if ("user".equals(lastMessage.get("role"))) {
-                // Если последнее сообщение user, добавляем фиктивный ответ assistant
-                messages.add(Map.of("role", "assistant", "content", "Понял."));
-            }
         }
 
         // Добавляем текущее сообщение пользователя
@@ -161,7 +182,7 @@ public class SonarClient implements AiClient {
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put("model", model);
         requestBody.put("messages", messages);
-        requestBody.put("max_tokens", 1000);
+        requestBody.put("max_tokens", 2000);
         requestBody.put("temperature", 0.7);
 
         String json = objectMapper.writeValueAsString(requestBody);
@@ -173,27 +194,22 @@ public class SonarClient implements AiClient {
         String model = sonarConfig.getModel();
         List<Map<String, Object>> messages = new ArrayList<>();
 
-        // Валидируем и исправляем историю сообщений
-        List<Map<String, String>> validHistory = validateAndFixMessageRoles(history);
+        // Исправляем структуру сообщений для Perplexity API
+        List<Map<String, String>> fixedHistory = fixPerplexityMessageStructure(history);
 
-        // Добавляем валидированную историю
-        for (Map<String, String> historyMessage : validHistory) {
+        // Добавляем исправленную историю
+        for (Map<String, String> historyMessage : fixedHistory) {
             messages.add(Map.of("role", historyMessage.get("role"), "content", historyMessage.get("content")));
         }
 
-        if (!messages.isEmpty()) {
-            Map<String, Object> lastMessage = messages.get(messages.size() - 1);
-            if ("user".equals(lastMessage.get("role"))) {
-                messages.add(Map.of("role", "assistant", "content", "Понял."));
-            }
-        }
-
+        // Создаем multimodal сообщение с изображением и текстом
         List<Map<String, Object>> content = new ArrayList<>();
         content.add(Map.of(
                 "type", "image_url",
                 "image_url", Map.of("url", "data:image/jpeg;base64," + base64Image)
         ));
         content.add(Map.of("type", "text", "text", userMessage));
+
         messages.add(Map.of("role", "user", "content", content));
 
         Map<String, Object> requestBody = new HashMap<>();
@@ -215,29 +231,13 @@ public class SonarClient implements AiClient {
             JsonNode message = firstChoice.get("message");
             if (message != null && message.has("content")) {
                 String result = message.get("content").asText().trim();
-                result = convertMarkdownCodeToHtml(result);
+                result = markdownConverter.convertMarkdownToTelegramHtml(result);
                 log.debug("Received Sonar response of length: {}", result.length());
                 return result;
             }
         }
         log.warn("Could not parse Sonar response: {}", responseBody);
         return "Извините, не удалось получить ответ от Sonar";
-    }
-
-    private String convertMarkdownCodeToHtml(String text) {
-        String regex = "``````";
-        Pattern pattern = Pattern.compile(regex);
-        Matcher matcher = pattern.matcher(text);
-        StringBuffer result = new StringBuffer();
-        while (matcher.find()) {
-            String language = matcher.group(1) != null ? matcher.group(1) : "";
-            String code = matcher.group(2);
-            String escapedCode = code.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
-            String htmlCode = "<pre><code class=\"language-" + language + "\">" + escapedCode + "</code></pre>";
-            matcher.appendReplacement(result, htmlCode);
-        }
-        matcher.appendTail(result);
-        return result.toString();
     }
 
     @Override

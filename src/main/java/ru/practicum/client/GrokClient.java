@@ -11,14 +11,13 @@ import org.apache.hc.core5.http.io.entity.StringEntity;
 import org.springframework.stereotype.Component;
 import ru.practicum.config.GrokConfig;
 import ru.practicum.config.ProxyConfig;
+import ru.practicum.utils.MarkdownToHtmlConverter;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 @Slf4j
 @Component
@@ -26,11 +25,16 @@ public class GrokClient implements AiClient {
     private final GrokConfig grokConfig;
     private final ObjectMapper objectMapper;
     private final CloseableHttpClient httpClient;
+    private final MarkdownToHtmlConverter markdownConverter;
+
+    private static final int MAX_TOKENS_GROK_4 = 16384;
+    private static final int MAX_TOKENS_GROK_3 = 8192;
 
     public GrokClient(GrokConfig grokConfig, ProxyConfig proxyConfig) {
         this.grokConfig = grokConfig;
         this.objectMapper = new ObjectMapper();
         this.httpClient = proxyConfig.createHttpClient();
+        this.markdownConverter = new MarkdownToHtmlConverter();
     }
 
     @Override
@@ -106,6 +110,13 @@ public class GrokClient implements AiClient {
         }
     }
 
+    private int getMaxOutputTokens() {
+        String model = grokConfig.getModel().toLowerCase();
+        return (model.contains("4"))
+                ? MAX_TOKENS_GROK_4
+                : MAX_TOKENS_GROK_3;
+    }
+
     private String createGrokRequestBody(String userMessage, List<Map<String, String>> history) throws Exception {
         String model = grokConfig.getModel();
         List<Map<String, Object>> messages = new ArrayList<>();
@@ -117,7 +128,7 @@ public class GrokClient implements AiClient {
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put("model", model);
         requestBody.put("messages", messages);
-        requestBody.put("max_tokens", 1000);
+        requestBody.put("max_tokens", getMaxOutputTokens());
         requestBody.put("temperature", 0.7);
 
         String json = objectMapper.writeValueAsString(requestBody);
@@ -143,7 +154,7 @@ public class GrokClient implements AiClient {
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put("model", model);
         requestBody.put("messages", messages);
-        requestBody.put("max_tokens", 1000);
+        requestBody.put("max_tokens", getMaxOutputTokens());
         requestBody.put("temperature", 0.7);
 
         String json = objectMapper.writeValueAsString(requestBody);
@@ -159,29 +170,13 @@ public class GrokClient implements AiClient {
             JsonNode message = firstChoice.get("message");
             if (message != null && message.has("content")) {
                 String result = message.get("content").asText().trim();
-                result = convertMarkdownCodeToHtml(result);
+                result = markdownConverter.convertMarkdownToTelegramHtml(result);
                 log.debug("Received Grok response of length: {}", result.length());
                 return result;
             }
         }
         log.warn("Could not parse Grok response: {}", responseBody);
         return "Извините, не удалось получить ответ от Grok";
-    }
-
-    private String convertMarkdownCodeToHtml(String text) {
-        String regex = "```(\\w+)?\\n([\\s\\S]*?)\\n```";
-        Pattern pattern = Pattern.compile(regex);
-        Matcher matcher = pattern.matcher(text);
-        StringBuffer result = new StringBuffer();
-        while (matcher.find()) {
-            String language = matcher.group(1) != null ? matcher.group(1) : "";
-            String code = matcher.group(2);
-            String escapedCode = code.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
-            String htmlCode = "<pre><code class=\"language-" + language + "\">" + escapedCode + "</code></pre>";
-            matcher.appendReplacement(result, htmlCode);
-        }
-        matcher.appendTail(result);
-        return result.toString();
     }
 
     @Override

@@ -11,35 +11,38 @@ import org.apache.hc.core5.http.io.entity.StringEntity;
 import org.springframework.stereotype.Component;
 import ru.practicum.config.GeminiConfig;
 import ru.practicum.config.ProxyConfig;
+import ru.practicum.utils.MarkdownToHtmlConverter;
 
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.*;
 
 @Slf4j
 @Component
-public class GeminiClient implements AiClient {
+public class GeminiClient implements AiClient, AutoCloseable {
     private final GeminiConfig geminiConfig;
     private final ObjectMapper objectMapper;
     private final CloseableHttpClient httpClient;
+    private final MarkdownToHtmlConverter markdownConverter;
+
+    private static final int MAX_OUTPUT_TOKENS_FLASH = 8192;
+    private static final int MAX_OUTPUT_TOKENS_PRO = 32000;
 
     public GeminiClient(GeminiConfig geminiConfig, ProxyConfig proxyConfig) {
         this.geminiConfig = geminiConfig;
         this.objectMapper = new ObjectMapper();
         this.httpClient = proxyConfig.createHttpClient();
+        this.markdownConverter = new MarkdownToHtmlConverter();
     }
 
     @Override
     public String sendTextMessage(String userMessage, List<Map<String, String>> history) {
         try {
             String requestBody = createGeminiRequestBody(userMessage, history);
-            String apiUrl = geminiConfig.getBaseUrl() + "/models/" + geminiConfig.getModel() + ":generateContent?key=" + geminiConfig.getApiKey();
-            HttpPost httpPost = new HttpPost(apiUrl);
+            String apiUrl = geminiConfig.getBaseUrl()
+                    + "/models/" + geminiConfig.getModel()
+                    + ":generateContent?key=" + geminiConfig.getApiKey();
 
+            HttpPost httpPost = new HttpPost(apiUrl);
             log.debug("Sending Gemini request to: {}", apiUrl);
 
             httpPost.setHeader("Content-Type", "application/json");
@@ -48,6 +51,7 @@ public class GeminiClient implements AiClient {
             try (CloseableHttpResponse response = httpClient.execute(httpPost)) {
                 String responseBody = EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
                 log.debug("Received Gemini response: {}", responseBody);
+
                 if (response.getCode() == 200) {
                     return parseGeminiResponse(responseBody);
                 } else if (response.getCode() == 429) {
@@ -71,9 +75,11 @@ public class GeminiClient implements AiClient {
     public String sendMessageWithImage(String userMessage, String base64Image, List<Map<String, String>> history) {
         try {
             String requestBody = createGeminiImageRequestBody(userMessage, base64Image, history);
-            String apiUrl = geminiConfig.getBaseUrl() + "/models/" + geminiConfig.getModel() + ":generateContent?key=" + geminiConfig.getApiKey();
-            HttpPost httpPost = new HttpPost(apiUrl);
+            String apiUrl = geminiConfig.getBaseUrl()
+                    + "/models/" + geminiConfig.getModel()
+                    + ":generateContent?key=" + geminiConfig.getApiKey();
 
+            HttpPost httpPost = new HttpPost(apiUrl);
             log.debug("Sending Gemini image request to: {}", apiUrl);
 
             httpPost.setHeader("Content-Type", "application/json");
@@ -82,6 +88,7 @@ public class GeminiClient implements AiClient {
             try (CloseableHttpResponse response = httpClient.execute(httpPost)) {
                 String responseBody = EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
                 log.debug("Received Gemini response: {}", responseBody);
+
                 if (response.getCode() == 200) {
                     return parseGeminiResponse(responseBody);
                 } else if (response.getCode() == 429) {
@@ -99,6 +106,13 @@ public class GeminiClient implements AiClient {
             log.error("Error sending image to Gemini", e);
             return "Извините, произошла ошибка при отправке изображения: " + e.getMessage();
         }
+    }
+
+    private int getMaxOutputTokens() {
+        String model = geminiConfig.getModel().toLowerCase();
+        return (model.contains("pro"))
+                ? MAX_OUTPUT_TOKENS_PRO
+                : MAX_OUTPUT_TOKENS_FLASH;
     }
 
     private String createGeminiRequestBody(String userMessage, List<Map<String, String>> history) throws Exception {
@@ -123,7 +137,7 @@ public class GeminiClient implements AiClient {
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put("contents", contents);
         requestBody.put("generationConfig", Map.of(
-                "maxOutputTokens", 1000,
+                "maxOutputTokens", getMaxOutputTokens(),
                 "temperature", 0.7
         ));
 
@@ -136,7 +150,7 @@ public class GeminiClient implements AiClient {
         String model = geminiConfig.getModel();
         List<Map<String, Object>> contents = new ArrayList<>();
 
-        // История с правильными ролями (без системного промпта)
+        // История с правильными ролями
         if (history != null) {
             for (Map<String, String> historyMessage : history) {
                 String role = historyMessage.get("role");
@@ -160,7 +174,7 @@ public class GeminiClient implements AiClient {
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put("contents", contents);
         requestBody.put("generationConfig", Map.of(
-                "maxOutputTokens", 2000,
+                "maxOutputTokens", getMaxOutputTokens(),
                 "temperature", 0.7
         ));
 
@@ -176,36 +190,33 @@ public class GeminiClient implements AiClient {
         if (candidates != null && candidates.isArray() && candidates.size() > 0) {
             JsonNode firstCandidate = candidates.get(0);
 
-            // Проверяем причину завершения
             JsonNode finishReason = firstCandidate.get("finishReason");
             if (finishReason != null) {
-                String reason = finishReason.asText();
-                if ("MAX_TOKENS".equals(reason)) {
-                    log.warn("Gemini response was truncated due to max tokens limit");
-                } else if ("SAFETY".equals(reason)) {
-                    return "🚫 Ответ заблокирован из соображений безопасности.";
-                } else if ("RECITATION".equals(reason)) {
-                    return "🚫 Ответ заблокирован из-за возможного нарушения авторских прав.";
+                switch (finishReason.asText()) {
+                    case "MAX_TOKENS" -> log.warn("Gemini response truncated (max tokens)");
+                    case "SAFETY" -> { return "🚫 Ответ заблокирован из соображений безопасности."; }
+                    case "RECITATION" -> { return "🚫 Ответ заблокирован из-за возможного нарушения авторских прав."; }
                 }
             }
 
             JsonNode content = firstCandidate.get("content");
             if (content != null && content.has("parts")) {
-                JsonNode parts = content.get("parts");
-                if (parts.isArray() && parts.size() > 0) {
-                    JsonNode textNode = parts.get(0).get("text");
+                for (JsonNode part : content.get("parts")) {
+                    JsonNode textNode = part.get("text");
                     if (textNode != null) {
-                        String result = textNode.asText().trim();
-                        result = convertMarkdownCodeToHtml(result);
-                        log.debug("Received Gemini response of length: {}", result.length());
+                        String raw = textNode.asText().trim();
+                        String result = markdownConverter.convertMarkdownToTelegramHtml(raw);
+
+                        if ("MAX_TOKENS".equals(finishReason != null ? finishReason.asText() : "")) {
+                            result += "\n\n⚠️ _Ответ мог быть обрезан. Попробуйте очистить историю командой /clear_";
+                        }
                         return result;
                     }
                 }
             }
 
-            // Если parts отсутствует, но есть кандидат
             if ("MAX_TOKENS".equals(finishReason != null ? finishReason.asText() : "")) {
-                return "⚠️ Ответ был обрезан из-за превышения лимита токенов. Попробуйте задать более короткий вопрос.";
+                return "⚠️ Превышен лимит токенов. Попробуйте:\n• Очистить историю (/clear)\n• Задать более короткий вопрос\n• Разбить запрос на части";
             }
         }
 
@@ -213,30 +224,11 @@ public class GeminiClient implements AiClient {
         return "Извините, не удалось получить ответ от Gemini";
     }
 
-
-    private String convertMarkdownCodeToHtml(String text) {
-        String regex = "``````";
-        Pattern pattern = Pattern.compile(regex);
-        Matcher matcher = pattern.matcher(text);
-        StringBuffer result = new StringBuffer();
-        while (matcher.find()) {
-            String language = matcher.group(1) != null ? matcher.group(1) : "";
-            String code = matcher.group(2);
-            String escapedCode = code.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
-            String htmlCode = "<pre><code class=\"language-" + language + "\">" + escapedCode + "</code></pre>";
-            matcher.appendReplacement(result, htmlCode);
-        }
-        matcher.appendTail(result);
-        return result.toString();
-    }
-
     @Override
     public void close() {
         try {
-            if (httpClient != null) {
-                httpClient.close();
-                log.info("HTTP client closed");
-            }
+            httpClient.close();
+            log.info("HTTP client closed");
         } catch (Exception e) {
             log.error("Error closing HTTP client", e);
         }

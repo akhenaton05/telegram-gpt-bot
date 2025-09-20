@@ -11,14 +11,13 @@ import org.apache.hc.core5.http.io.entity.StringEntity;
 import org.springframework.stereotype.Component;
 import ru.practicum.config.OpenAiConfig;
 import ru.practicum.config.ProxyConfig;
+import ru.practicum.utils.MarkdownToHtmlConverter;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 @Slf4j
 @Component
@@ -26,11 +25,13 @@ public class OpenAiClient implements AiClient {
     private final OpenAiConfig openAiConfig;
     private final ObjectMapper objectMapper;
     private final CloseableHttpClient httpClient;
+    private final MarkdownToHtmlConverter markdownConverter;
 
     public OpenAiClient(OpenAiConfig openAiConfig, ProxyConfig proxyConfig) {
         this.openAiConfig = openAiConfig;
         this.objectMapper = new ObjectMapper();
         this.httpClient = proxyConfig.createHttpClient();
+        this.markdownConverter = new MarkdownToHtmlConverter();
     }
 
     @Override
@@ -108,9 +109,9 @@ public class OpenAiClient implements AiClient {
         requestBody.put("model", model);
         requestBody.put("messages", messages);
         if (model.equals("gpt-5-nano")) {
-            requestBody.put("max_completion_tokens", 2000); // Для OpenAI всегда max_tokens
+            requestBody.put("max_completion_tokens", 3000); // Для OpenAI всегда max_tokens
         } else {
-            requestBody.put("max_tokens", 1000);
+            requestBody.put("max_tokens", 3000);
         }
         String json = objectMapper.writeValueAsString(requestBody);
         log.debug("Using OpenAI model: {} for request", model);
@@ -134,7 +135,7 @@ public class OpenAiClient implements AiClient {
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put("model", model);
         requestBody.put("messages", messages);
-        requestBody.put("max_tokens", 1000);
+        requestBody.put("max_tokens", 3000);
         String json = objectMapper.writeValueAsString(requestBody);
         log.debug("Using OpenAI model: {} for image request", model);
         return json;
@@ -148,29 +149,13 @@ public class OpenAiClient implements AiClient {
             JsonNode message = firstChoice.get("message");
             if (message != null && message.has("content")) {
                 String result = message.get("content").asText().trim();
-                result = convertMarkdownCodeToHtml(result);
+                result = markdownConverter.convertMarkdownToTelegramHtml(result);
                 log.debug("Received OpenAI response of length: {}", result.length());
                 return result;
             }
         }
         log.warn("Could not parse OpenAI response: {}", responseBody);
         return "Извините, не удалось получить ответ от OpenAI";
-    }
-
-    private String convertMarkdownCodeToHtml(String text) {
-        String regex = "```(\\w+)?\\n([\\s\\S]*?)\\n```";
-        Pattern pattern = Pattern.compile(regex);
-        Matcher matcher = pattern.matcher(text);
-        StringBuffer result = new StringBuffer();
-        while (matcher.find()) {
-            String language = matcher.group(1) != null ? matcher.group(1) : "";
-            String code = matcher.group(2);
-            String escapedCode = code.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
-            String htmlCode = "<pre><code class=\"language-" + language + "\">" + escapedCode + "</code></pre>";
-            matcher.appendReplacement(result, htmlCode);
-        }
-        matcher.appendTail(result);
-        return result.toString();
     }
 
     @Override

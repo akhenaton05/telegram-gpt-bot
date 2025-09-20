@@ -10,16 +10,14 @@ import org.telegram.telegrambots.meta.api.methods.AnswerCallbackQuery;
 import org.telegram.telegrambots.meta.api.methods.GetFile;
 import org.telegram.telegrambots.meta.api.methods.send.SendChatAction;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
-import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
-import org.telegram.telegrambots.meta.api.objects.Message;
-import org.telegram.telegrambots.meta.api.objects.PhotoSize;
-import org.telegram.telegrambots.meta.api.objects.Update;
+import org.telegram.telegrambots.meta.api.objects.*;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import ru.practicum.client.*;
 import ru.practicum.config.*;
 import ru.practicum.utils.ConversationContext;
+import ru.practicum.utils.MessageSplitter;
 
 import java.io.InputStream;
 import java.net.URL;
@@ -39,8 +37,9 @@ public class TelegramChatService extends TelegramLongPollingBot {
     private final TelegramBotConfig telegramBotConfig;
     private final ConversationContext context;
     private AiClient aiClient;
+    private final MessageSplitter messageSplitter;
 
-    public TelegramChatService(ClaudeConfig claudeConfig, OpenAiConfig openAiConfig, GrokConfig grokConfig, SonarConfig sonarConfig, GeminiConfig geminiConfig, ProxyConfig proxyConfig, TelegramBotConfig telegramBotConfig, AiClientFactory aiClientFactory, ConversationContext context) {
+    public TelegramChatService(ClaudeConfig claudeConfig, OpenAiConfig openAiConfig, GrokConfig grokConfig, SonarConfig sonarConfig, GeminiConfig geminiConfig, ProxyConfig proxyConfig, TelegramBotConfig telegramBotConfig, AiClientFactory aiClientFactory, ConversationContext context, MessageSplitter messageSplitter) {
         this.claudeConfig = claudeConfig;
         this.openAiConfig = openAiConfig;
         this.grokConfig = grokConfig;
@@ -50,6 +49,7 @@ public class TelegramChatService extends TelegramLongPollingBot {
         this.telegramBotConfig = telegramBotConfig;
         this.context = context;
         this.aiClient = aiClientFactory.getDefaultAiClient();
+        this.messageSplitter = messageSplitter;
     }
 
     @Override
@@ -148,7 +148,7 @@ public class TelegramChatService extends TelegramLongPollingBot {
         GetFile getFileMethod = new GetFile();
         getFileMethod.setFileId(fileId);
 
-        org.telegram.telegrambots.meta.api.objects.File file = execute(getFileMethod);
+        File file = execute(getFileMethod);
 
         // Формируем URL для скачивания
         String fileUrl = "https://api.telegram.org/file/bot" + getBotToken() + "/" + file.getFilePath();
@@ -198,7 +198,11 @@ public class TelegramChatService extends TelegramLongPollingBot {
     private void sendMessage(Long chatId, String text) {
         final int TG_LIMIT = 4096;
 
-        for (String chunk : splitMessage(text, TG_LIMIT)) {
+        List<String> chunks = messageSplitter.splitMessageForTelegram(text, TG_LIMIT);
+
+        for (String chunk : chunks) {
+            if (chunk == null || chunk.isEmpty()) continue;
+
             SendMessage msg = new SendMessage();
             msg.setChatId(chatId);
             msg.setText(chunk);
@@ -419,26 +423,6 @@ public class TelegramChatService extends TelegramLongPollingBot {
                 log.warn("Unknown callback data: {}", callData);
             }
         }
-    }
-
-    private List<String> splitMessage(String text, int maxLength) {
-        List<String> parts = new ArrayList<>();
-        int start = 0;
-
-        while (start < text.length()) {
-            int end = Math.min(start + maxLength, text.length());
-
-            // ищем \n внутри последней трети куска
-            int lastBreak = text.lastIndexOf('\n', end);
-            if (lastBreak == -1 || lastBreak < start + (int)(maxLength * 0.7)) {
-                // перенос слишком близко к началу – игнорируем
-                lastBreak = end;
-            }
-
-            parts.add(text.substring(start, lastBreak));
-            start = lastBreak;
-        }
-        return parts;
     }
 
     @PreDestroy
