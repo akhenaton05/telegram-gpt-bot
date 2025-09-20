@@ -27,10 +27,10 @@ public class OpenAiClient implements AiClient {
     private final CloseableHttpClient httpClient;
     private final MarkdownToHtmlConverter markdownConverter;
 
-    public OpenAiClient(OpenAiConfig openAiConfig, ProxyConfig proxyConfig) {
+    public OpenAiClient(OpenAiConfig openAiConfig, CloseableHttpClient httpClient) {
         this.openAiConfig = openAiConfig;
+        this.httpClient = httpClient;
         this.objectMapper = new ObjectMapper();
-        this.httpClient = proxyConfig.createHttpClient();
         this.markdownConverter = new MarkdownToHtmlConverter();
     }
 

@@ -27,10 +27,10 @@ public class AnthropicClient implements AiClient {
     private final CloseableHttpClient httpClient;
     private final MarkdownToHtmlConverter markdownConverter;
 
-    public AnthropicClient(ClaudeConfig claudeConfig, ProxyConfig proxyConfig) {
+    public AnthropicClient(ClaudeConfig claudeConfig, CloseableHttpClient httpClient) {
         this.claudeConfig = claudeConfig;
+        this.httpClient = httpClient;
         this.objectMapper = new ObjectMapper();
-        this.httpClient = proxyConfig.createHttpClient();
         this.markdownConverter = new MarkdownToHtmlConverter();
     }
 

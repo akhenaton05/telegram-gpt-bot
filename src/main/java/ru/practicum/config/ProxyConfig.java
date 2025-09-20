@@ -11,13 +11,15 @@ import org.apache.hc.client5.http.impl.classic.HttpClients;
 import org.apache.hc.core5.http.HttpHost;
 import org.apache.hc.core5.util.Timeout;
 import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.stereotype.Component;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Lazy;
 
 import java.util.concurrent.TimeUnit;
 
 @Data
 @Slf4j
-@Component
+@Configuration
 @ConfigurationProperties(prefix = "proxy")
 public class ProxyConfig {
     private boolean enabled;
@@ -26,6 +28,8 @@ public class ProxyConfig {
     private String username;
     private String password;
 
+    @Bean
+    @Lazy(false)
     public CloseableHttpClient createHttpClient() {
         var clientBuilder = HttpClients.custom();
 

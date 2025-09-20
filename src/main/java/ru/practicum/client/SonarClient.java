@@ -27,10 +27,10 @@ public class SonarClient implements AiClient {
     private final CloseableHttpClient httpClient;
     private final MarkdownToHtmlConverter markdownConverter;
 
-    public SonarClient(SonarConfig sonarConfig, ProxyConfig proxyConfig) {
+    public SonarClient(SonarConfig sonarConfig, CloseableHttpClient httpClient) {
         this.sonarConfig = sonarConfig;
+        this.httpClient = httpClient;
         this.objectMapper = new ObjectMapper();
-        this.httpClient = proxyConfig.createHttpClient();
         this.markdownConverter = new MarkdownToHtmlConverter();
     }
 

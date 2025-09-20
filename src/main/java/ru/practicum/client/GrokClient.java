@@ -30,10 +30,10 @@ public class GrokClient implements AiClient {
     private static final int MAX_TOKENS_GROK_4 = 16384;
     private static final int MAX_TOKENS_GROK_3 = 8192;
 
-    public GrokClient(GrokConfig grokConfig, ProxyConfig proxyConfig) {
+    public GrokClient(GrokConfig grokConfig, CloseableHttpClient httpClient) {
         this.grokConfig = grokConfig;
+        this.httpClient = httpClient;
         this.objectMapper = new ObjectMapper();
-        this.httpClient = proxyConfig.createHttpClient();
         this.markdownConverter = new MarkdownToHtmlConverter();
     }
 

@@ -27,10 +27,10 @@ public class GeminiClient implements AiClient, AutoCloseable {
     private static final int MAX_OUTPUT_TOKENS_FLASH = 8192;
     private static final int MAX_OUTPUT_TOKENS_PRO = 32000;
 
-    public GeminiClient(GeminiConfig geminiConfig, ProxyConfig proxyConfig) {
+    public GeminiClient(GeminiConfig geminiConfig, CloseableHttpClient httpClient) {
         this.geminiConfig = geminiConfig;
+        this.httpClient = httpClient;
         this.objectMapper = new ObjectMapper();
-        this.httpClient = proxyConfig.createHttpClient();
         this.markdownConverter = new MarkdownToHtmlConverter();
     }
 

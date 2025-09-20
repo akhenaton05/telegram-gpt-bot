@@ -3,6 +3,7 @@ package ru.practicum.service;
 import jakarta.annotation.PreDestroy;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.springframework.stereotype.Service;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.ActionType;
@@ -33,18 +34,20 @@ public class TelegramChatService extends TelegramLongPollingBot {
     private final GrokConfig grokConfig;
     private final SonarConfig sonarConfig;
     private final GeminiConfig geminiConfig;
+    private final CloseableHttpClient httpClient;
     private final ProxyConfig proxyConfig;
     private final TelegramBotConfig telegramBotConfig;
     private final ConversationContext context;
     private AiClient aiClient;
     private final MessageSplitter messageSplitter;
 
-    public TelegramChatService(ClaudeConfig claudeConfig, OpenAiConfig openAiConfig, GrokConfig grokConfig, SonarConfig sonarConfig, GeminiConfig geminiConfig, ProxyConfig proxyConfig, TelegramBotConfig telegramBotConfig, AiClientFactory aiClientFactory, ConversationContext context, MessageSplitter messageSplitter) {
+    public TelegramChatService(ClaudeConfig claudeConfig, OpenAiConfig openAiConfig, GrokConfig grokConfig, SonarConfig sonarConfig, GeminiConfig geminiConfig, ProxyConfig proxyConfig, CloseableHttpClient httpClient, ProxyConfig proxyConfig1, TelegramBotConfig telegramBotConfig, AiClientFactory aiClientFactory, ConversationContext context, MessageSplitter messageSplitter) {
         this.claudeConfig = claudeConfig;
         this.openAiConfig = openAiConfig;
         this.grokConfig = grokConfig;
         this.sonarConfig = sonarConfig;
         this.geminiConfig = geminiConfig;
+        this.httpClient = httpClient;
         this.proxyConfig = proxyConfig;
         this.telegramBotConfig = telegramBotConfig;
         this.context = context;
@@ -355,67 +358,67 @@ public class TelegramChatService extends TelegramLongPollingBot {
         switch (callData) {
             case "Gpt 4.1 mini" -> {
                 openAiConfig.setModel("gpt-4.1-mini-2025-04-14");
-                aiClient = new OpenAiClient(openAiConfig, proxyConfig);
+                aiClient = new OpenAiClient(openAiConfig, httpClient);
                 sendMessage(chatId, "Выбрана модель: Gpt 4.1 mini (OpenAi)");
                 context.clearHistory(chatId);
             }
             case "Gpt 5 nano" -> {
                 openAiConfig.setModel("gpt-5-nano");
-                aiClient = new OpenAiClient(openAiConfig, proxyConfig);
+                aiClient = new OpenAiClient(openAiConfig, httpClient);
                 sendMessage(chatId, "Выбрана модель: Gpt 5 Nano (OpenAi)");
                 context.clearHistory(chatId);
             }
             case "Claude 3 Haiku" -> {
                 claudeConfig.setModel("claude-3-haiku-20240307");
-                aiClient = new AnthropicClient(claudeConfig, proxyConfig);
+                aiClient = new AnthropicClient(claudeConfig, httpClient);
                 sendMessage(chatId, "Выбрана модель: Claude 3 Haiku (AnthropicAi)");
                 context.clearHistory(chatId);
             }
             case "Claude 3.5 Haiku" -> {
                 claudeConfig.setModel("claude-3-5-haiku-20241022");
-                aiClient = new AnthropicClient(claudeConfig, proxyConfig);
+                aiClient = new AnthropicClient(claudeConfig, httpClient);
                 sendMessage(chatId, "Выбрана модель: Claude 3.5 Haiku (AnthropicAi)");
                 context.clearHistory(chatId);
             }
             case "Claude 4 Sonnet" -> {
                 claudeConfig.setModel("claude-sonnet-4-20250514");
-                aiClient = new AnthropicClient(claudeConfig, proxyConfig);
+                aiClient = new AnthropicClient(claudeConfig, httpClient);
                 sendMessage(chatId, "Выбрана модель: Claude 4 Sonnet (AnthropicAi)");
                 context.clearHistory(chatId);
             }
             case "Grok 4" -> {
                 grokConfig.setModel("grok-code-fast-1");
-                aiClient = new GrokClient(grokConfig, proxyConfig);
+                aiClient = new GrokClient(grokConfig, httpClient);
                 sendMessage(chatId, "Выбрана модель: Grok 4 (xAi)");
                 context.clearHistory(chatId);
             }
             case "Grok 3 mini" -> {
                 grokConfig.setModel("grok-3-mini");
-                aiClient = new GrokClient(grokConfig, proxyConfig);
+                aiClient = new GrokClient(grokConfig, httpClient);
                 sendMessage(chatId, "Выбрана модель: Grok 3 Mini (xAi)");
                 context.clearHistory(chatId);
             }
             case "Sonar" -> {
                 sonarConfig.setModel("sonar");
-                aiClient = new SonarClient(sonarConfig, proxyConfig);
+                aiClient = new SonarClient(sonarConfig, httpClient);
                 sendMessage(chatId, "Выбрана модель: Sonar (PerplexityAi)");
                 context.clearHistory(chatId);
             }
             case "Sonar Pro" -> {
                 sonarConfig.setModel("sonar-pro");
-                aiClient = new SonarClient(sonarConfig, proxyConfig);
+                aiClient = new SonarClient(sonarConfig, httpClient);
                 sendMessage(chatId, "Выбрана модель: Sonar Pro (PerplexityAi)");
                 context.clearHistory(chatId);
             }
             case "Gemini 2.5 Flash" -> {
                 geminiConfig.setModel("gemini-2.5-flash");
-                aiClient = new GeminiClient(geminiConfig, proxyConfig);
+                aiClient = new GeminiClient(geminiConfig, httpClient);
                 sendMessage(chatId, "Выбрана модель: Gemini 2.5 Flash (Gemini)");
                 context.clearHistory(chatId);
             }
             case "Gemini 2.5 Pro" -> {
                 geminiConfig.setModel("gemini-2.5-pro");
-                aiClient = new GeminiClient(geminiConfig, proxyConfig);
+                aiClient = new GeminiClient(geminiConfig, httpClient);
                 sendMessage(chatId, "Выбрана модель: Gemini 2.5 Pro (Gemini)");
                 context.clearHistory(chatId);
             }
