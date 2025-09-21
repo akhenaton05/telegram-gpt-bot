@@ -269,10 +269,10 @@ public class TelegramChatService extends TelegramLongPollingBot {
         List<InlineKeyboardButton> rowInline1 = new ArrayList<>();
         InlineKeyboardButton inlineKeyboardButton1 = new InlineKeyboardButton();
         inlineKeyboardButton1.setText("Gpt 4.1 Mini");
-        inlineKeyboardButton1.setCallbackData("Gpt 4.1 mini");
+        inlineKeyboardButton1.setCallbackData("Gpt 4.1 Mini");
         InlineKeyboardButton inlineKeyboardButton2 = new InlineKeyboardButton();
-        inlineKeyboardButton2.setText("Gpt 5 Nano");
-        inlineKeyboardButton2.setCallbackData("Gpt 5 nano");
+        inlineKeyboardButton2.setText("Gpt 5");
+        inlineKeyboardButton2.setCallbackData("Gpt 5");
         rowInline1.add(inlineKeyboardButton1);
         rowInline1.add(inlineKeyboardButton2);
 
@@ -355,17 +355,18 @@ public class TelegramChatService extends TelegramLongPollingBot {
             log.error("Error answering callback query", e);
         }
 
+        //o4-mini-deep-research
         switch (callData) {
-            case "Gpt 4.1 mini" -> {
+            case "Gpt 4.1 Mini" -> {
                 openAiConfig.setModel("gpt-4.1-mini-2025-04-14");
                 aiClient = new OpenAiClient(openAiConfig, httpClient);
                 sendMessage(chatId, "Выбрана модель: Gpt 4.1 mini (OpenAi)");
                 context.clearHistory(chatId);
             }
-            case "Gpt 5 nano" -> {
-                openAiConfig.setModel("gpt-5-nano");
+            case "Gpt 5" -> {
+                openAiConfig.setModel("gpt-5-chat-latest");
                 aiClient = new OpenAiClient(openAiConfig, httpClient);
-                sendMessage(chatId, "Выбрана модель: Gpt 5 Nano (OpenAi)");
+                sendMessage(chatId, "Выбрана модель: Gpt 5 (OpenAi)");
                 context.clearHistory(chatId);
             }
             case "Claude 3 Haiku" -> {

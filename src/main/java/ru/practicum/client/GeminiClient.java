@@ -10,7 +10,6 @@ import org.apache.hc.core5.http.io.entity.EntityUtils;
 import org.apache.hc.core5.http.io.entity.StringEntity;
 import org.springframework.stereotype.Component;
 import ru.practicum.config.GeminiConfig;
-import ru.practicum.config.ProxyConfig;
 import ru.practicum.utils.MarkdownToHtmlConverter;
 
 import java.nio.charset.StandardCharsets;
