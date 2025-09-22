@@ -34,6 +34,8 @@ public class TelegramChatService extends TelegramLongPollingBot {
     private final GrokConfig grokConfig;
     private final SonarConfig sonarConfig;
     private final GeminiConfig geminiConfig;
+    private final DeepSeekConfig deepSeekConfig;
+    private final LlamaConfig llamaConfig;
     private final CloseableHttpClient httpClient;
     private final ProxyConfig proxyConfig;
     private final TelegramBotConfig telegramBotConfig;
@@ -41,12 +43,14 @@ public class TelegramChatService extends TelegramLongPollingBot {
     private AiClient aiClient;
     private final MessageSplitter messageSplitter;
 
-    public TelegramChatService(ClaudeConfig claudeConfig, OpenAiConfig openAiConfig, GrokConfig grokConfig, SonarConfig sonarConfig, GeminiConfig geminiConfig, ProxyConfig proxyConfig, CloseableHttpClient httpClient, ProxyConfig proxyConfig1, TelegramBotConfig telegramBotConfig, AiClientFactory aiClientFactory, ConversationContext context, MessageSplitter messageSplitter) {
+    public TelegramChatService(ClaudeConfig claudeConfig, OpenAiConfig openAiConfig, GrokConfig grokConfig, SonarConfig sonarConfig, GeminiConfig geminiConfig, DeepSeekConfig deepSeekConfig, LlamaConfig llamaConfig, ProxyConfig proxyConfig, CloseableHttpClient httpClient, ProxyConfig proxyConfig1, TelegramBotConfig telegramBotConfig, AiClientFactory aiClientFactory, ConversationContext context, MessageSplitter messageSplitter) {
         this.claudeConfig = claudeConfig;
         this.openAiConfig = openAiConfig;
         this.grokConfig = grokConfig;
         this.sonarConfig = sonarConfig;
         this.geminiConfig = geminiConfig;
+        this.deepSeekConfig = deepSeekConfig;
+        this.llamaConfig = llamaConfig;
         this.httpClient = httpClient;
         this.proxyConfig = proxyConfig;
         this.telegramBotConfig = telegramBotConfig;
@@ -279,20 +283,13 @@ public class TelegramChatService extends TelegramLongPollingBot {
         // AnthropicAi
         List<InlineKeyboardButton> rowInline2 = new ArrayList<>();
         InlineKeyboardButton inlineKeyboardButton3 = new InlineKeyboardButton();
-        inlineKeyboardButton3.setText("Claude 3 Haiku");
-        inlineKeyboardButton3.setCallbackData("Claude 3 Haiku");
+        inlineKeyboardButton3.setText("Claude 3.5 Haiku");
+        inlineKeyboardButton3.setCallbackData("Claude 3.5 Haiku");
         InlineKeyboardButton inlineKeyboardButton4 = new InlineKeyboardButton();
-        inlineKeyboardButton4.setText("Claude 3.5 Haiku");
-        inlineKeyboardButton4.setCallbackData("Claude 3.5 Haiku");
+        inlineKeyboardButton4.setText("Claude 4 Sonnet");
+        inlineKeyboardButton4.setCallbackData("Claude 4 Sonnet");
         rowInline2.add(inlineKeyboardButton3);
         rowInline2.add(inlineKeyboardButton4);
-
-        // AnthropicAi
-        List<InlineKeyboardButton> rowInline3 = new ArrayList<>();
-        InlineKeyboardButton inlineKeyboardButton5 = new InlineKeyboardButton();
-        inlineKeyboardButton5.setText("Claude 4 Sonnet");
-        inlineKeyboardButton5.setCallbackData("Claude 4 Sonnet");
-        rowInline3.add(inlineKeyboardButton5);
 
         // xAi
         List<InlineKeyboardButton> rowInline4 = new ArrayList<>();
@@ -327,12 +324,35 @@ public class TelegramChatService extends TelegramLongPollingBot {
         rowInline6.add(inlineKeyboardButton10);
         rowInline6.add(inlineKeyboardButton11);
 
+        // DeepSeek
+        List<InlineKeyboardButton> rowInline7 = new ArrayList<>();
+        InlineKeyboardButton inlineKeyboardButton12 = new InlineKeyboardButton();
+        inlineKeyboardButton12.setText("DeepSeek 3.1");
+        inlineKeyboardButton12.setCallbackData("DeepSeek 3.1");
+        InlineKeyboardButton inlineKeyboardButton13 = new InlineKeyboardButton();
+        inlineKeyboardButton13.setText("DeepSeek 3.1 Reasoning");
+        inlineKeyboardButton13.setCallbackData("DeepSeek 3.1 Reasoning");
+        rowInline7.add(inlineKeyboardButton12);
+        rowInline7.add(inlineKeyboardButton13);
+
+        // Llama
+        List<InlineKeyboardButton> rowInline8 = new ArrayList<>();
+        InlineKeyboardButton inlineKeyboardButton14 = new InlineKeyboardButton();
+        inlineKeyboardButton14.setText("Llama 3.3");
+        inlineKeyboardButton14.setCallbackData("Llama 3.3");
+        InlineKeyboardButton inlineKeyboardButton15 = new InlineKeyboardButton();
+        inlineKeyboardButton15.setText("Llama 3.1 8B");
+        inlineKeyboardButton15.setCallbackData("Llama 3.1 8B");
+        rowInline8.add(inlineKeyboardButton14);
+        rowInline8.add(inlineKeyboardButton15);
+
         rowsInline.add(rowInline1);
         rowsInline.add(rowInline2);
-        rowsInline.add(rowInline3);
         rowsInline.add(rowInline4);
         rowsInline.add(rowInline5);
         rowsInline.add(rowInline6);
+        rowsInline.add(rowInline7);
+        rowsInline.add(rowInline8);
 
         markupInline.setKeyboard(rowsInline);
         message.setReplyMarkup(markupInline);
@@ -417,10 +437,34 @@ public class TelegramChatService extends TelegramLongPollingBot {
                 sendMessage(chatId, "Выбрана модель: Gemini 2.5 Flash (Gemini)");
                 context.clearHistory(chatId);
             }
+            case "DeepSeek 3.1" -> {
+                deepSeekConfig.setModel("deepseek-chat");
+                aiClient = new DeepSeekClient(deepSeekConfig, httpClient);
+                sendMessage(chatId, "Выбрана модель: DeepSeek 3.1 (DeepSeek)");
+                context.clearHistory(chatId);
+            }
+            case "DeepSeek 3.1 Reasoning" -> {
+                deepSeekConfig.setModel("deepseek-reasoner");
+                aiClient = new DeepSeekClient(deepSeekConfig, httpClient);
+                sendMessage(chatId, "Выбрана модель: DeepSeek 3.1 Reasoning (DeepSeek)");
+                context.clearHistory(chatId);
+            }
             case "Gemini 2.5 Pro" -> {
                 geminiConfig.setModel("gemini-2.5-pro");
                 aiClient = new GeminiClient(geminiConfig, httpClient);
                 sendMessage(chatId, "Выбрана модель: Gemini 2.5 Pro (Gemini)");
+                context.clearHistory(chatId);
+            }
+            case "Llama 3.3" -> {
+                llamaConfig.setModel("llama-3.3-70b-versatile");
+                aiClient = new LlamaClient(llamaConfig, httpClient);
+                sendMessage(chatId, "Выбрана модель: Llama 3.3 Versatile (Meta)");
+                context.clearHistory(chatId);
+            }
+            case "Llama 3.1 8B" -> {
+                geminiConfig.setModel("llama-3.1-8b-instant");
+                aiClient = new LlamaClient(llamaConfig, httpClient);
+                sendMessage(chatId, "Выбрана модель: Llama 3.1 8B (Meta)");
                 context.clearHistory(chatId);
             }
             default -> {
