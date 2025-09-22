@@ -338,13 +338,19 @@ public class TelegramChatService extends TelegramLongPollingBot {
         // Llama
         List<InlineKeyboardButton> rowInline8 = new ArrayList<>();
         InlineKeyboardButton inlineKeyboardButton14 = new InlineKeyboardButton();
-        inlineKeyboardButton14.setText("Llama 3.3");
-        inlineKeyboardButton14.setCallbackData("Llama 3.3");
+        inlineKeyboardButton14.setText("Llama 4 Scout");
+        inlineKeyboardButton14.setCallbackData("Llama 4 Scout");
         InlineKeyboardButton inlineKeyboardButton15 = new InlineKeyboardButton();
-        inlineKeyboardButton15.setText("Llama 3.1 8B");
-        inlineKeyboardButton15.setCallbackData("Llama 3.1 8B");
+        inlineKeyboardButton15.setText("Llama 4 Maverick");
+        inlineKeyboardButton15.setCallbackData("Llama 4 Maverick");
         rowInline8.add(inlineKeyboardButton14);
         rowInline8.add(inlineKeyboardButton15);
+
+        List<InlineKeyboardButton> rowInline9 = new ArrayList<>();
+        InlineKeyboardButton inlineKeyboardButton16 = new InlineKeyboardButton();
+        inlineKeyboardButton16.setText("Kimi K2");
+        inlineKeyboardButton16.setCallbackData("Kimi K2");
+        rowInline9.add(inlineKeyboardButton16);
 
         rowsInline.add(rowInline1);
         rowsInline.add(rowInline2);
@@ -353,6 +359,7 @@ public class TelegramChatService extends TelegramLongPollingBot {
         rowsInline.add(rowInline6);
         rowsInline.add(rowInline7);
         rowsInline.add(rowInline8);
+        rowsInline.add(rowInline9);
 
         markupInline.setKeyboard(rowsInline);
         message.setReplyMarkup(markupInline);
@@ -455,16 +462,22 @@ public class TelegramChatService extends TelegramLongPollingBot {
                 sendMessage(chatId, "Выбрана модель: Gemini 2.5 Pro (Gemini)");
                 context.clearHistory(chatId);
             }
-            case "Llama 3.3" -> {
-                llamaConfig.setModel("llama-3.3-70b-versatile");
+            case "Llama 4 Scout" -> {
+                llamaConfig.setModel("meta-llama/llama-4-scout-17b-16e-instruct");
                 aiClient = new LlamaClient(llamaConfig, httpClient);
-                sendMessage(chatId, "Выбрана модель: Llama 3.3 Versatile (Meta)");
+                sendMessage(chatId, "Выбрана модель: Llama 4 Scout (Meta)");
                 context.clearHistory(chatId);
             }
-            case "Llama 3.1 8B" -> {
-                geminiConfig.setModel("llama-3.1-8b-instant");
+            case "Llama 4 Maverick" -> {
+                llamaConfig.setModel("meta-llama/llama-4-maverick-17b-128e-instruct");
                 aiClient = new LlamaClient(llamaConfig, httpClient);
-                sendMessage(chatId, "Выбрана модель: Llama 3.1 8B (Meta)");
+                sendMessage(chatId, "Выбрана модель: Llama 4 Maverick (Meta)");
+                context.clearHistory(chatId);
+            }
+            case "Kimi K2" -> {
+                llamaConfig.setModel("moonshotai/kimi-k2-instruct-0905");
+                aiClient = new LlamaClient(llamaConfig, httpClient);
+                sendMessage(chatId, "Выбрана модель: Kimi K2 (MoonshotAi)");
                 context.clearHistory(chatId);
             }
             default -> {
