@@ -36,6 +36,7 @@ public class TelegramChatService extends TelegramLongPollingBot {
     private final GeminiConfig geminiConfig;
     private final DeepSeekConfig deepSeekConfig;
     private final LlamaConfig llamaConfig;
+    private final OpenRouterConfig openRouterConfig;
     private final CloseableHttpClient httpClient;
     private final ProxyConfig proxyConfig;
     private final TelegramBotConfig telegramBotConfig;
@@ -43,7 +44,7 @@ public class TelegramChatService extends TelegramLongPollingBot {
     private AiClient aiClient;
     private final MessageSplitter messageSplitter;
 
-    public TelegramChatService(ClaudeConfig claudeConfig, OpenAiConfig openAiConfig, GrokConfig grokConfig, SonarConfig sonarConfig, GeminiConfig geminiConfig, DeepSeekConfig deepSeekConfig, LlamaConfig llamaConfig, ProxyConfig proxyConfig, CloseableHttpClient httpClient, ProxyConfig proxyConfig1, TelegramBotConfig telegramBotConfig, AiClientFactory aiClientFactory, ConversationContext context, MessageSplitter messageSplitter) {
+    public TelegramChatService(ClaudeConfig claudeConfig, OpenAiConfig openAiConfig, GrokConfig grokConfig, SonarConfig sonarConfig, GeminiConfig geminiConfig, DeepSeekConfig deepSeekConfig, LlamaConfig llamaConfig, OpenRouterConfig openRouterConfig, ProxyConfig proxyConfig, CloseableHttpClient httpClient, ProxyConfig proxyConfig1, TelegramBotConfig telegramBotConfig, AiClientFactory aiClientFactory, ConversationContext context, MessageSplitter messageSplitter) {
         this.claudeConfig = claudeConfig;
         this.openAiConfig = openAiConfig;
         this.grokConfig = grokConfig;
@@ -51,6 +52,7 @@ public class TelegramChatService extends TelegramLongPollingBot {
         this.geminiConfig = geminiConfig;
         this.deepSeekConfig = deepSeekConfig;
         this.llamaConfig = llamaConfig;
+        this.openRouterConfig = openRouterConfig;
         this.httpClient = httpClient;
         this.proxyConfig = proxyConfig;
         this.telegramBotConfig = telegramBotConfig;
@@ -283,22 +285,22 @@ public class TelegramChatService extends TelegramLongPollingBot {
         // AnthropicAi
         List<InlineKeyboardButton> rowInline2 = new ArrayList<>();
         InlineKeyboardButton inlineKeyboardButton3 = new InlineKeyboardButton();
-        inlineKeyboardButton3.setText("Claude 3.5 Haiku");
-        inlineKeyboardButton3.setCallbackData("Claude 3.5 Haiku");
+        inlineKeyboardButton3.setText("Claude 4.5 Haiku");
+        inlineKeyboardButton3.setCallbackData("Claude 4.5 Haiku");
         InlineKeyboardButton inlineKeyboardButton4 = new InlineKeyboardButton();
-        inlineKeyboardButton4.setText("Claude 4 Sonnet");
-        inlineKeyboardButton4.setCallbackData("Claude 4 Sonnet");
+        inlineKeyboardButton4.setText("Claude 4.5 Sonnet");
+        inlineKeyboardButton4.setCallbackData("Claude 4.5 Sonnet");
         rowInline2.add(inlineKeyboardButton3);
         rowInline2.add(inlineKeyboardButton4);
 
         // xAi
         List<InlineKeyboardButton> rowInline4 = new ArrayList<>();
         InlineKeyboardButton inlineKeyboardButton6 = new InlineKeyboardButton();
-        inlineKeyboardButton6.setText("Grok 4");
-        inlineKeyboardButton6.setCallbackData("Grok 4");
+        inlineKeyboardButton6.setText("Grok 4 Fast");
+        inlineKeyboardButton6.setCallbackData("Grok 4 Fast");
         InlineKeyboardButton inlineKeyboardButton7 = new InlineKeyboardButton();
-        inlineKeyboardButton7.setText("Grok 3 Mini");
-        inlineKeyboardButton7.setCallbackData("Grok 3 mini");
+        inlineKeyboardButton7.setText("Grok 4 Code");
+        inlineKeyboardButton7.setCallbackData("Grok 4 Code");
         rowInline4.add(inlineKeyboardButton6);
         rowInline4.add(inlineKeyboardButton7);
 
@@ -382,7 +384,6 @@ public class TelegramChatService extends TelegramLongPollingBot {
             log.error("Error answering callback query", e);
         }
 
-        //o4-mini-deep-research
         switch (callData) {
             case "Gpt 4.1 Mini" -> {
                 openAiConfig.setModel("gpt-4.1-mini-2025-04-14");
@@ -396,32 +397,26 @@ public class TelegramChatService extends TelegramLongPollingBot {
                 sendMessage(chatId, "Выбрана модель: Gpt 5 (OpenAi)");
                 context.clearHistory(chatId);
             }
-            case "Claude 3 Haiku" -> {
-                claudeConfig.setModel("claude-3-haiku-20240307");
-                aiClient = new AnthropicClient(claudeConfig, httpClient);
-                sendMessage(chatId, "Выбрана модель: Claude 3 Haiku (AnthropicAi)");
+            case "Claude 4.5 Haiku" -> {
+                openRouterConfig.setModel("anthropic/claude-haiku-4.5:online");
+                aiClient = new OpenRouterClient(openRouterConfig, httpClient);
+                sendMessage(chatId, "Выбрана модель: Claude 4.5 Haiku (AnthropicAi)");
                 context.clearHistory(chatId);
             }
-            case "Claude 3.5 Haiku" -> {
-                claudeConfig.setModel("claude-3-5-haiku-20241022");
-                aiClient = new AnthropicClient(claudeConfig, httpClient);
-                sendMessage(chatId, "Выбрана модель: Claude 3.5 Haiku (AnthropicAi)");
+            case "Claude 4.5 Sonnet" -> {
+                openRouterConfig.setModel("anthropic/claude-sonnet-4.5:online");
+                aiClient = new OpenRouterClient(openRouterConfig, httpClient);
+                sendMessage(chatId, "Выбрана модель: Claude 4.5 Sonnet (AnthropicAi)");
                 context.clearHistory(chatId);
             }
-            case "Claude 4 Sonnet" -> {
-                claudeConfig.setModel("claude-sonnet-4-20250514");
-                aiClient = new AnthropicClient(claudeConfig, httpClient);
-                sendMessage(chatId, "Выбрана модель: Claude 4 Sonnet (AnthropicAi)");
-                context.clearHistory(chatId);
-            }
-            case "Grok 4" -> {
-                grokConfig.setModel("grok-code-fast-1");
+            case "Grok 4 Fast" -> {
+                grokConfig.setModel("grok-4-fast-reasoning");
                 aiClient = new GrokClient(grokConfig, httpClient);
                 sendMessage(chatId, "Выбрана модель: Grok 4 (xAi)");
                 context.clearHistory(chatId);
             }
-            case "Grok 3 mini" -> {
-                grokConfig.setModel("grok-3-mini");
+            case "Grok 4 Code" -> {
+                grokConfig.setModel("grok-code-fast-1");
                 aiClient = new GrokClient(grokConfig, httpClient);
                 sendMessage(chatId, "Выбрана модель: Grok 3 Mini (xAi)");
                 context.clearHistory(chatId);

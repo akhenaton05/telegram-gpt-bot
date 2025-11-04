@@ -118,7 +118,6 @@ public class GeminiClient implements AiClient, AutoCloseable {
         String model = geminiConfig.getModel();
         List<Map<String, Object>> contents = new ArrayList<>();
 
-        // История с правильными ролями
         if (history != null) {
             for (Map<String, String> historyMessage : history) {
                 String role = historyMessage.get("role");
@@ -135,6 +134,17 @@ public class GeminiClient implements AiClient, AutoCloseable {
 
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put("contents", contents);
+        if (model.equals("gemini-2.5-flash")) {
+            Map<String, Object> googleSearch = new HashMap<>();
+
+            Map<String, Object> tool = new HashMap<>();
+            tool.put("google_search", googleSearch);
+
+            List<Map<String, Object>> tools = new ArrayList<>();
+            tools.add(tool);
+
+            requestBody.put("tools", tools);
+        }
         requestBody.put("generationConfig", Map.of(
                 "maxOutputTokens", getMaxOutputTokens(),
                 "temperature", 0.7
