@@ -1,15 +1,20 @@
 # Telegram AI Bot
 
-**Telegram AI Bot** — это универсальный Telegram-бот, поддерживающий интеграцию с несколькими AI-провайдерами (OpenAI GPT, Anthropic Claude и xAI Grok) для обработки текстовых сообщений и изображений. Бот предоставляет возможность переключения между различными моделями в реальном времени и сохраняет контекст диалогов. Проект написан на Java с использованием Spring Boot и библиотеки `telegrambots`.
+**Telegram AI Bot** — это универсальный Telegram-бот, поддерживающий интеграцию с восемью AI-провайдерами (OpenAI, Anthropic, xAI, Google Gemini, DeepSeek, Perplexity, Meta Llama, Kimi) для обработки текстовых сообщений и изображений. Бот предоставляет возможность переключения между различными моделями в реальном времени и сохраняет контекст диалогов. Проект написан на Java с использованием Spring Boot и библиотеки `telegrambots`.
 
 ## Возможности
 
-- **Мультипровайдерная поддержка**: Работа с моделями OpenAI, Anthropic Claude и xAI Grok.
+- **Мультипровайдерная поддержка**: Работа с 16 AI-моделями от 8 провайдеров.
 - **Обработка контента**: 
   - Текстовые сообщения с поддержкой контекста.
   - Анализ и описание изображений (включая vision-модели).
   - Извлечение текста из документов и скриншотов.
 - **Динамическое переключение моделей**: Выбор AI-модели через inline-клавиатуру прямо в чате.
+- **Эффективное управление ресурсами**:
+  - Кэширование клиентов для переиспользования HTTP-соединений
+  - Автоматическая инвалидация кэша при смене модели
+  - Многопоточная безопасность через ConcurrentHashMap
+  - Изоляция контекста и клиентов между пользователями
 - **Команды**:
   - `/start` — Приветственное сообщение с инструкциями по использованию.
   - `/info` — Информация о боте, текущей модели и статусе прокси.
@@ -23,17 +28,35 @@
 ## Поддерживаемые модели
 
 ### OpenAI Models
-- **GPT-4.1 Mini** (`gpt-4.1-mini-2025-04-14`) - Быстрый и экономичный.
-- **GPT-5 Nano** (`gpt-5-nano`) - Новейшая модель OpenAI.
+- **GPT-5 Nano** (`gpt-5-nano`) - Быстрый и экономичный.
+- **GPT-5** (`gpt-5`) - Полнофункциональная версия.
 
 ### Anthropic Claude Models
-- **Claude 3 Haiku** (`claude-3-haiku-20240307`) - Быстрый и доступный.
-- **Claude 3.5 Haiku** (`claude-3-5-haiku-20241022`) - Улучшенная версия.
-- **Claude 4 Sonnet** (`claude-sonnet-4-20250514`) - Самый продвинутый.
+- **Claude 4.5 Haiku** (`claude-haiku`) - Быстрый и доступный.
+- **Claude 4.5 Sonnet** (`claude-sonnet`) - Самый продвинутый с vision.
 
 ### xAI Grok Models
-- **Grok 4** (`grok-4`) - Актуальная модель xAI (2025), поддерживает текст.
-- **Grok 3 mini** (`grok-3-mini`) - Лёгкая версия.
+- **Grok 4 Fast** (`grok-4-fast`) - Оптимизированная для скорости.
+- **Grok 4 Code** (`grok-4-code`) - Специализация на коде.
+
+### Perplexity Models
+- **Sonar** (`sonar`) - Базовая модель.
+- **Sonar Pro** (`sonar-pro`) - Расширенная версия.
+
+### Google Gemini Models
+- **Gemini 2.5 Flash** (`gemini-flash`) - Быстрая обработка.
+- **Gemini 2.5 Pro** (`gemini-pro`) - Продвинутые возможности.
+
+### DeepSeek Models
+- **DeepSeek 3.1** (`deepseek`) - Общего назначения.
+- **DeepSeek Reasoning** (`deepseek-reasoning`) - С улучшенным reasoning.
+
+### Meta Llama Models
+- **Llama 4 Scout** (`llama-scout`) - Лёгкая версия.
+- **Llama 4 Maverick** (`llama-maverick`) - Полнофункциональная.
+
+### Kimi Models
+- **Kimi K2** (`kimi-k2`) - Поддержка больших контекстов.
 
 ## Требования
 
@@ -41,9 +64,13 @@
 - **Maven**: 3.6.0 или выше.
 - **Telegram Bot Token**: Получите токен через [BotFather](https://t.me/BotFather).
 - **AI API Keys**:
-  - **Anthropic API Key**: [аккаунт Anthropic](https://www.anthropic.com).
   - **OpenAI API Key**: [аккаунт OpenAI](https://www.openai.com).
+  - **Anthropic API Key**: [аккаунт Anthropic](https://www.anthropic.com).
   - **xAI API Key**: [аккаунт xAI](https://console.x.ai).
+  - **Google API Key**: [Google AI Studio](https://aistudio.google.com).
+  - **DeepSeek API Key**: [DeepSeek Platform](https://platform.deepseek.com).
+  - **Perplexity API Key**: [Perplexity AI](https://www.perplexity.ai).
+  - **Groq API Key**: [Groq Console](https://console.groq.com).
 - (Опционально) Прокси-сервер для доступа к AI API.
 
 ## Установка
@@ -69,18 +96,103 @@
      model: "${CLAUDE_MODEL:claude-3-haiku-20240307}"
      system-prompt: "Ты дружелюбный ассистент, отвечай кратко и на русском."
      api-version: "2023-06-01"
-
-   # Конфигурация OpenAI API  
-   openai:
-     baseUrl: "${OPENAI_BASE_URL:https://api.openai.com/v1}"
-     apiKey: "${OPENAI_API_KEY:your-openai-api-key}"
-     model: "${OPENAI_MODEL:gpt-4.1-mini-2025-04-14}"
-
-   # Конфигурация xAI Grok API
-   grok:
-     base-url: "${GROK_BASE_URL:https://api.x.ai/v1}"
-     api-key: "${GROK_API_KEY:your-xai-api-key}"
-     model: "${GROK_MODEL:grok-4}"
+   ai:
+     default-model: "gpt-5-nano"
+   # Провайдеры
+     providers:
+       openai:
+         baseUrl: "https://api.openai.com/v1"
+         apiKey: "${OPENAI_API_KEY:your-openai-api-key}"
+       
+       anthropic:
+         baseUrl: "https://api.anthropic.com/v1"
+         apiKey: "${ANTHROPIC_API_KEY:your-anthropic-api-key}"
+       
+       grok:
+         baseUrl: "https://api.x.ai/v1"
+         apiKey: "${GROK_API_KEY:your-xai-api-key}"
+       
+       perplexity:
+         baseUrl: "https://api.perplexity.ai"
+         apiKey: "${PERPLEXITY_API_KEY:your-perplexity-api-key}"
+       
+       gemini:
+         baseUrl: "https://generativelanguage.googleapis.com/v1beta"
+         apiKey: "${GEMINI_API_KEY:your-gemini-api-key}"
+       
+       deepseek:
+         baseUrl: "https://api.deepseek.com/v1"
+         apiKey: "${DEEPSEEK_API_KEY:your-deepseek-api-key}"
+       
+       groq:
+         baseUrl: "https://api.groq.com/openai/v1"
+         apiKey: "${GROQ_API_KEY:your-groq-api-key}"
+       
+       openrouter:
+         baseUrl: "https://openrouter.ai/api/v1"
+         apiKey: "${OPENROUTER_API_KEY:your-openrouter-api-key}"
+     
+     # Модели
+     models:
+       gpt-5-nano:
+         provider: "openai"
+         modelName: "gpt-5-nano"
+       
+       gpt-5:
+         provider: "openai"
+         modelName: "gpt-5"
+       
+       claude-haiku:
+         provider: "anthropic"
+         modelName: "claude-3-5-haiku-20241022"
+       
+       claude-sonnet:
+         provider: "anthropic"
+         modelName: "claude-sonnet-4-20250514"
+       
+       grok-4-fast:
+         provider: "grok"
+         modelName: "grok-4-fast"
+       
+       grok-4-code:
+         provider: "grok"
+         modelName: "grok-4-code"
+       
+       sonar:
+         provider: "perplexity"
+         modelName: "sonar"
+       
+       sonar-pro:
+         provider: "perplexity"
+         modelName: "sonar-pro"
+       
+       gemini-flash:
+         provider: "gemini"
+         modelName: "gemini-2.5-flash-latest"
+       
+       gemini-pro:
+         provider: "gemini"
+         modelName: "gemini-2.5-pro-latest"
+       
+       deepseek:
+         provider: "deepseek"
+         modelName: "deepseek-chat"
+       
+       deepseek-reasoning:
+         provider: "deepseek"
+         modelName: "deepseek-reasoner"
+       
+       llama-scout:
+         provider: "groq"
+         modelName: "llama-4-scout"
+       
+       llama-maverick:
+         provider: "groq"
+         modelName: "llama-4-maverick"
+       
+       kimi-k2:
+         provider: "openrouter"
+         modelName: "moonshot/kimi-k2"
 
    # Конфигурация Telegram Bot
    telegrambot:
@@ -101,19 +213,7 @@
    mvn clean install
    ```
 
-4. **(Альтернативно) Настройте переменные окружения**:
-   ```bash
-   export TELEGRAM_BOT_TOKEN="your-telegram-bot-token"
-   export CLAUDE_API_KEY="your-claude-api-key"
-   export OPENAI_API_KEY="your-openai-api-key"
-   export PROXY_ENABLED="true"
-   export PROXY_HOST="your-proxy-host"
-   export PROXY_PORT="your-proxy-port"
-   export PROXY_USERNAME="your-proxy-username"
-   export PROXY_PASSWORD="your-proxy-password"
-   ```
-
-5. **Запустите приложение**:
+4. **Запустите приложение**:
    ```bash
    mvn spring-boot:run
    ```
@@ -130,36 +230,6 @@
 - Скриншот кода: "Найди ошибку в коде"
 - Документ: "Извлеки текст из изображения"
 - Просто фото: "Опиши что видишь на картинке"
-
-## Технические особенности
-
-- **Контекст диалогов**: Автоматическое управление историей сообщений (до 7 сообщений)
-- **Прокси поддержка**: HTTP и SOCKS прокси с аутентификацией
-- **Безопасность**: API ключи через переменные окружения
-- **Логирование**: Подробные логи для отладки и мониторинга
-
-## Структура проекта
-
-```bash
-src/main/java/ru/practicum/
-├── TelegramBotApplication.java     # Главный класс приложения
-├── client/                         # AI клиенты
-│   ├── AiClient.java              # Интерфейс AI клиента
-│   ├── AiClientFactory.java       # Фабрика клиентов
-│   ├── AnthropicClient.java       # Claude API клиент
-│   ├── OpenAiClient.java          # OpenAI API клиент
-│   └── GrokClient.java            # xAI Grok API клиент
-├── config/                        # Конфигурационные классы
-│   ├── ClaudeConfig.java          # Конфигурация Claude
-│   ├── OpenAiConfig.java          # Конфигурация OpenAI
-│   ├── GrokConfig.java            # Конфигурация Grok
-│   ├── ProxyConfig.java           # Конфигурация прокси
-│   └── TelegramBotConfig.java     # Конфигурация Telegram
-├── service/
-│   └── TelegramChatService.java   # Основной сервис бота
-└── utils/
-    └── ConversationContext.java   # Управление контекстом
-```
 
 ## Разработка
 
