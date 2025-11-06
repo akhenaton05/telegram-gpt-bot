@@ -8,8 +8,7 @@ import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpResponse;
 import org.apache.hc.core5.http.io.entity.EntityUtils;
 import org.apache.hc.core5.http.io.entity.StringEntity;
-import org.springframework.stereotype.Component;
-import ru.practicum.config.GrokConfig;
+import ru.practicum.dto.GrokDto;
 import ru.practicum.utils.MarkdownToHtmlConverter;
 
 import java.nio.charset.StandardCharsets;
@@ -19,9 +18,9 @@ import java.util.List;
 import java.util.Map;
 
 @Slf4j
-@Component
-public class GrokClient implements AiClient {
-    private final GrokConfig grokConfig;
+public class GrokClient implements AiTextSender {
+
+    private final GrokDto dto;
     private final ObjectMapper objectMapper;
     private final CloseableHttpClient httpClient;
     private final MarkdownToHtmlConverter markdownConverter;
@@ -29,8 +28,12 @@ public class GrokClient implements AiClient {
     private static final int MAX_TOKENS_GROK_4 = 16384;
     private static final int MAX_TOKENS_GROK_3 = 8192;
 
-    public GrokClient(GrokConfig grokConfig, CloseableHttpClient httpClient) {
-        this.grokConfig = grokConfig;
+    public GrokClient(String baseUrl, String apiKey, String modelName, CloseableHttpClient httpClient) {
+        this.dto = new GrokDto();
+        this.dto.setBaseUrl(baseUrl);
+        this.dto.setApiKey(apiKey);
+        this.dto.setModel(modelName);
+
         this.httpClient = httpClient;
         this.objectMapper = new ObjectMapper();
         this.markdownConverter = new MarkdownToHtmlConverter();
@@ -39,154 +42,74 @@ public class GrokClient implements AiClient {
     @Override
     public String sendTextMessage(String userMessage, List<Map<String, String>> history) {
         try {
-            String requestBody = createGrokRequestBody(userMessage, history);
-            String apiUrl = grokConfig.getBaseUrl() + "/chat/completions";
+            String requestBody = createRequestBody(userMessage, history);
+            String apiUrl = dto.getBaseUrl();
             HttpPost httpPost = new HttpPost(apiUrl);
 
-            log.debug("Sending Grok request to: {}", apiUrl);
-
             httpPost.setHeader("Content-Type", "application/json");
-            httpPost.setHeader("Authorization", "Bearer " + grokConfig.getApiKey());
+            httpPost.setHeader("Authorization", "Bearer " + dto.getApiKey());
             httpPost.setEntity(new StringEntity(requestBody, StandardCharsets.UTF_8));
 
-            try (CloseableHttpResponse response = httpClient.execute(httpPost)) {
-                String responseBody = EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
-                log.debug("Received Grok response: {}", responseBody);
-                if (response.getCode() == 200) {
-                    return parseGrokResponse(responseBody);
-                } else if (response.getCode() == 429) {
-                    log.error("Grok API quota exceeded: {}", responseBody);
-                    return "🚫 Превышена квота Grok API. Проверьте баланс в аккаунте xAI.";
-                } else if (response.getCode() == 401) {
-                    log.error("Grok API authentication error: {}", responseBody);
-                    return "🔐 Ошибка авторизации Grok API. Проверьте API ключ xAI.";
-                } else {
-                    log.error("Grok API error: Status {}, Response: {}", response.getCode(), responseBody);
-                    return "❌ Ошибка Grok API (код: " + response.getCode() + "). Попробуйте позже.";
-                }
-            }
+            return executeRequest(httpPost);
         } catch (Exception e) {
-            log.error("Error sending message to Grok", e);
-            return "Извините, произошла ошибка при отправке сообщения: " + e.getMessage();
+            log.error("Error in GrokClient", e);
+            return "Ошибка: " + e.getMessage();
         }
     }
 
-    @Override
-    public String sendMessageWithImage(String userMessage, String base64Image, List<Map<String, String>> history) {
-        try {
-            String requestBody = createGrokImageRequestBody(userMessage, base64Image, history);
-            String apiUrl = grokConfig.getBaseUrl() + "/chat/completions";
-            HttpPost httpPost = new HttpPost(apiUrl);
-
-            log.debug("Sending Grok image request to: {}", apiUrl);
-
-            httpPost.setHeader("Content-Type", "application/json");
-            httpPost.setHeader("Authorization", "Bearer " + grokConfig.getApiKey());
-            httpPost.setEntity(new StringEntity(requestBody, StandardCharsets.UTF_8));
-
-            try (CloseableHttpResponse response = httpClient.execute(httpPost)) {
-                String responseBody = EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
-                log.debug("Received Grok response: {}", responseBody);
-                if (response.getCode() == 200) {
-                    return parseGrokResponse(responseBody);
-                } else if (response.getCode() == 429) {
-                    log.error("Grok API quota exceeded: {}", responseBody);
-                    return "🚫 Превышена квота Grok API. Проверьте баланс в аккаунте xAI.";
-                } else if (response.getCode() == 401) {
-                    log.error("Grok API authentication error: {}", responseBody);
-                    return "🔐 Ошибка авторизации Grok API. Проверьте API ключ xAI.";
-                } else if (response.getCode() == 400) {
-                    log.error("Grok Image error: {}", responseBody);
-                    return "❌ Данная модель Grok не поддерживает обработку изображений, попробуйте другую модель.";
-                } else {
-                    log.error("Grok API error: Status {}, Response: {}", response.getCode(), responseBody);
-                    return "❌ Ошибка Grok API (код: " + response.getCode() + "). Попробуйте позже.";
-                }
-            }
-        } catch (Exception e) {
-            log.error("Error sending image to Grok", e);
-            return "Извините, произошла ошибка при отправке изображения: " + e.getMessage();
-        }
+    private int getMaxTokens() {
+        return dto.getModel().toLowerCase().contains("4") ? MAX_TOKENS_GROK_4 : MAX_TOKENS_GROK_3;
     }
 
-    private int getMaxOutputTokens() {
-        String model = grokConfig.getModel().toLowerCase();
-        return (model.contains("4"))
-                ? MAX_TOKENS_GROK_4
-                : MAX_TOKENS_GROK_3;
-    }
-
-    private String createGrokRequestBody(String userMessage, List<Map<String, String>> history) throws Exception {
-        String model = grokConfig.getModel();
+    private String createRequestBody(String userMessage, List<Map<String, String>> history) throws Exception {
         List<Map<String, Object>> messages = new ArrayList<>();
-        for (Map<String, String> historyMessage : history) {
-            messages.add(Map.of("role", historyMessage.get("role"), "content", historyMessage.get("content")));
+        for (Map<String, String> msg : history) {
+            messages.add(Map.of("role", msg.get("role"), "content", msg.get("content")));
         }
         messages.add(Map.of("role", "user", "content", userMessage));
 
-        Map<String, Object> requestBody = new HashMap<>();
-        requestBody.put("model", model);
-        requestBody.put("messages", messages);
-        requestBody.put("max_tokens", getMaxOutputTokens());
-        requestBody.put("temperature", 0.7);
+        Map<String, Object> body = new HashMap<>();
+        body.put("model", dto.getModel());
+        body.put("messages", messages);
+        body.put("max_tokens", getMaxTokens());
+        body.put("temperature", 0.7);
 
-        String json = objectMapper.writeValueAsString(requestBody);
-        log.debug("Using Grok model: {} for request", model);
-        return json;
+        return objectMapper.writeValueAsString(body);
     }
 
-    private String createGrokImageRequestBody(String userMessage, String base64Image, List<Map<String, String>> history) throws Exception {
-        String model = grokConfig.getModel();
-        List<Map<String, Object>> messages = new ArrayList<>();
-        for (Map<String, String> historyMessage : history) {
-            messages.add(Map.of("role", historyMessage.get("role"), "content", historyMessage.get("content")));
+    private String executeRequest(HttpPost httpPost) {
+        try (CloseableHttpResponse response = httpClient.execute(httpPost)) {
+            String responseBody = EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
+            log.debug("Received Grok response: {}", responseBody);
+
+            int status = response.getCode();
+            return switch (status) {
+                case 200 -> parseResponse(responseBody);
+                case 429 -> "Grok quota exceeded. Check account balance.";
+                case 401 -> "Authorisation error Grok API. Check API key.";
+                default -> "Grok Error (code: " + response.getCode() + "). Try again later.";
+            };
+        } catch (Exception e) {
+            log.error("Error sending image to DeepSeek", e);
+            return "Error sending request to DeepSeek: " + e.getMessage();
         }
-
-        List<Map<String, Object>> content = new ArrayList<>();
-        content.add(Map.of(
-                "type", "image_url",
-                "image_url", Map.of("url", "data:image/jpeg;base64," + base64Image)
-        ));
-        content.add(Map.of("type", "text", "text", userMessage));
-        messages.add(Map.of("role", "user", "content", content));
-
-        Map<String, Object> requestBody = new HashMap<>();
-        requestBody.put("model", model);
-        requestBody.put("messages", messages);
-        requestBody.put("max_tokens", getMaxOutputTokens());
-        requestBody.put("temperature", 0.7);
-
-        String json = objectMapper.writeValueAsString(requestBody);
-        log.debug("Using Grok model: {} for image request", model);
-        return json;
     }
 
-    private String parseGrokResponse(String responseBody) throws Exception {
-        JsonNode jsonNode = objectMapper.readTree(responseBody);
-        JsonNode choices = jsonNode.get("choices");
-        if (choices != null && choices.isArray() && choices.size() > 0) {
-            JsonNode firstChoice = choices.get(0);
-            JsonNode message = firstChoice.get("message");
-            if (message != null && message.has("content")) {
+    private String parseResponse(String responseBody) throws Exception {
+        JsonNode root = objectMapper.readTree(responseBody);
+        JsonNode choices = root.path("choices");
+
+        if (choices.isArray() && choices.size() > 0) {
+            JsonNode message = choices.get(0).path("message");
+            if (message.has("content")) {
                 String result = message.get("content").asText().trim();
                 result = markdownConverter.convertMarkdownToTelegramHtml(result);
-                log.debug("Received Grok response of length: {}", result.length());
+                log.debug("Grok response length: {}", result.length());
                 return result;
             }
         }
-        log.warn("Could not parse Grok response: {}", responseBody);
-        return "Извините, не удалось получить ответ от Grok";
-    }
 
-    @Override
-    public void close() {
-        try {
-            if (httpClient != null) {
-                httpClient.close();
-                log.info("HTTP client closed");
-            }
-        } catch (Exception e) {
-            log.error("Error closing HTTP client", e);
-        }
+        log.warn("Failed to parse Grok response: {}", responseBody);
+        return "Извините, не удалось получить ответ от Grok.";
     }
 }

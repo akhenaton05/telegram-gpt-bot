@@ -8,17 +8,15 @@ import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpResponse;
 import org.apache.hc.core5.http.io.entity.EntityUtils;
 import org.apache.hc.core5.http.io.entity.StringEntity;
-import org.springframework.stereotype.Component;
-import ru.practicum.config.GeminiConfig;
+import ru.practicum.dto.GeminiDto;
 import ru.practicum.utils.MarkdownToHtmlConverter;
 
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 @Slf4j
-@Component
-public class GeminiClient implements AiClient, AutoCloseable {
-    private final GeminiConfig geminiConfig;
+public class GeminiClient implements AiTextSender, AiImageSender {
+    private final GeminiDto dto;
     private final ObjectMapper objectMapper;
     private final CloseableHttpClient httpClient;
     private final MarkdownToHtmlConverter markdownConverter;
@@ -26,8 +24,12 @@ public class GeminiClient implements AiClient, AutoCloseable {
     private static final int MAX_OUTPUT_TOKENS_FLASH = 8192;
     private static final int MAX_OUTPUT_TOKENS_PRO = 32000;
 
-    public GeminiClient(GeminiConfig geminiConfig, CloseableHttpClient httpClient) {
-        this.geminiConfig = geminiConfig;
+    public GeminiClient(String baseUrl, String apiKey, String modelName, CloseableHttpClient httpClient) {
+        this.dto = new GeminiDto();
+        this.dto.setBaseUrl(baseUrl);
+        this.dto.setApiKey(apiKey);
+        this.dto.setModel(modelName);
+
         this.httpClient = httpClient;
         this.objectMapper = new ObjectMapper();
         this.markdownConverter = new MarkdownToHtmlConverter();
@@ -37,9 +39,9 @@ public class GeminiClient implements AiClient, AutoCloseable {
     public String sendTextMessage(String userMessage, List<Map<String, String>> history) {
         try {
             String requestBody = createGeminiRequestBody(userMessage, history);
-            String apiUrl = geminiConfig.getBaseUrl()
-                    + "/models/" + geminiConfig.getModel()
-                    + ":generateContent?key=" + geminiConfig.getApiKey();
+            String apiUrl = dto.getBaseUrl()
+                    + "/models/" + dto.getModel()
+                    + ":generateContent?key=" + dto.getApiKey();
 
             HttpPost httpPost = new HttpPost(apiUrl);
             log.debug("Sending Gemini request to: {}", apiUrl);
@@ -47,23 +49,7 @@ public class GeminiClient implements AiClient, AutoCloseable {
             httpPost.setHeader("Content-Type", "application/json");
             httpPost.setEntity(new StringEntity(requestBody, StandardCharsets.UTF_8));
 
-            try (CloseableHttpResponse response = httpClient.execute(httpPost)) {
-                String responseBody = EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
-                log.debug("Received Gemini response: {}", responseBody);
-
-                if (response.getCode() == 200) {
-                    return parseGeminiResponse(responseBody);
-                } else if (response.getCode() == 429) {
-                    log.error("Gemini API quota exceeded: {}", responseBody);
-                    return "🚫 Превышена квота Gemini API. Проверьте баланс в Google AI Studio.";
-                } else if (response.getCode() == 401) {
-                    log.error("Gemini API authentication error: {}", responseBody);
-                    return "🔐 Ошибка авторизации Gemini API. Проверьте API ключ Google.";
-                } else {
-                    log.error("Gemini API error: Status {}, Response: {}", response.getCode(), responseBody);
-                    return "❌ Ошибка Gemini API (код: " + response.getCode() + "). Попробуйте позже.";
-                }
-            }
+            return executeRequest(httpPost);
         } catch (Exception e) {
             log.error("Error sending message to Gemini", e);
             return "Извините, произошла ошибка при отправке сообщения: " + e.getMessage();
@@ -74,9 +60,9 @@ public class GeminiClient implements AiClient, AutoCloseable {
     public String sendMessageWithImage(String userMessage, String base64Image, List<Map<String, String>> history) {
         try {
             String requestBody = createGeminiImageRequestBody(userMessage, base64Image, history);
-            String apiUrl = geminiConfig.getBaseUrl()
-                    + "/models/" + geminiConfig.getModel()
-                    + ":generateContent?key=" + geminiConfig.getApiKey();
+            String apiUrl = dto.getBaseUrl()
+                    + "/models/" + dto.getModel()
+                    + ":generateContent?key=" + dto.getApiKey();
 
             HttpPost httpPost = new HttpPost(apiUrl);
             log.debug("Sending Gemini image request to: {}", apiUrl);
@@ -84,23 +70,7 @@ public class GeminiClient implements AiClient, AutoCloseable {
             httpPost.setHeader("Content-Type", "application/json");
             httpPost.setEntity(new StringEntity(requestBody, StandardCharsets.UTF_8));
 
-            try (CloseableHttpResponse response = httpClient.execute(httpPost)) {
-                String responseBody = EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
-                log.debug("Received Gemini response: {}", responseBody);
-
-                if (response.getCode() == 200) {
-                    return parseGeminiResponse(responseBody);
-                } else if (response.getCode() == 429) {
-                    log.error("Gemini API quota exceeded: {}", responseBody);
-                    return "🚫 Превышена квота Gemini API. Проверьте баланс в Google AI Studio.";
-                } else if (response.getCode() == 401) {
-                    log.error("Gemini API authentication error: {}", responseBody);
-                    return "🔐 Ошибка авторизации Gemini API. Проверьте API ключ Google.";
-                } else {
-                    log.error("Gemini API error: Status {}, Response: {}", response.getCode(), responseBody);
-                    return "❌ Ошибка Gemini API (код: " + response.getCode() + "). Попробуйте позже.";
-                }
-            }
+            return executeRequest(httpPost);
         } catch (Exception e) {
             log.error("Error sending image to Gemini", e);
             return "Извините, произошла ошибка при отправке изображения: " + e.getMessage();
@@ -108,14 +78,14 @@ public class GeminiClient implements AiClient, AutoCloseable {
     }
 
     private int getMaxOutputTokens() {
-        String model = geminiConfig.getModel().toLowerCase();
+        String model = dto.getModel().toLowerCase();
         return (model.contains("pro"))
                 ? MAX_OUTPUT_TOKENS_PRO
                 : MAX_OUTPUT_TOKENS_FLASH;
     }
 
     private String createGeminiRequestBody(String userMessage, List<Map<String, String>> history) throws Exception {
-        String model = geminiConfig.getModel();
+        String model = dto.getModel();
         List<Map<String, Object>> contents = new ArrayList<>();
 
         if (history != null) {
@@ -156,7 +126,7 @@ public class GeminiClient implements AiClient, AutoCloseable {
     }
 
     private String createGeminiImageRequestBody(String userMessage, String base64Image, List<Map<String, String>> history) throws Exception {
-        String model = geminiConfig.getModel();
+        String model = dto.getModel();
         List<Map<String, Object>> contents = new ArrayList<>();
 
         // История с правильными ролями
@@ -190,6 +160,24 @@ public class GeminiClient implements AiClient, AutoCloseable {
         String json = objectMapper.writeValueAsString(requestBody);
         log.debug("Using Gemini model: {} for image request", model);
         return json;
+    }
+
+    private String executeRequest(HttpPost httpPost) {
+        try (CloseableHttpResponse response = httpClient.execute(httpPost)) {
+            String responseBody = EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
+            log.debug("Received Gemini response: {}", responseBody);
+
+            int status = response.getCode();
+            return switch (status) {
+                case 200 -> parseGeminiResponse(responseBody);
+                case 429 -> "Gemini quota exceeded. Check account balance.";
+                case 401 -> "Authorisation error Gemini API. Check API key.";
+                default -> "Gemini Error (code: " + response.getCode() + "). Try again later.";
+            };
+        } catch (Exception e) {
+            log.error("Error sending image to Gemini", e);
+            return "Error sending request to Gemini: " + e.getMessage();
+        }
     }
 
     private String parseGeminiResponse(String responseBody) throws Exception {
@@ -231,15 +219,5 @@ public class GeminiClient implements AiClient, AutoCloseable {
 
         log.warn("Could not parse Gemini response: {}", responseBody);
         return "Извините, не удалось получить ответ от Gemini";
-    }
-
-    @Override
-    public void close() {
-        try {
-            httpClient.close();
-            log.info("HTTP client closed");
-        } catch (Exception e) {
-            log.error("Error closing HTTP client", e);
-        }
     }
 }

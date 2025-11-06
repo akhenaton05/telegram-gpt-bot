@@ -8,8 +8,7 @@ import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpResponse;
 import org.apache.hc.core5.http.io.entity.EntityUtils;
 import org.apache.hc.core5.http.io.entity.StringEntity;
-import org.springframework.stereotype.Component;
-import ru.practicum.config.ClaudeConfig;
+import ru.practicum.dto.ClaudeDto;
 import ru.practicum.utils.MarkdownToHtmlConverter;
 
 import java.nio.charset.StandardCharsets;
@@ -19,50 +18,39 @@ import java.util.List;
 import java.util.Map;
 
 @Slf4j
-@Component
-public class AnthropicClient implements AiClient {
-    private final ClaudeConfig claudeConfig;
+public class AnthropicClient implements AiTextSender, AiImageSender {
+    private final ClaudeDto dto;
     private final ObjectMapper objectMapper;
     private final CloseableHttpClient httpClient;
     private final MarkdownToHtmlConverter markdownConverter;
 
-    public AnthropicClient(ClaudeConfig claudeConfig, CloseableHttpClient httpClient) {
-        this.claudeConfig = claudeConfig;
+    public AnthropicClient(String baseUrl, String apiKey, String modelName, CloseableHttpClient httpClient) {
+        this.dto = new ClaudeDto();
+        this.dto.setBaseUrl(baseUrl);
+        this.dto.setApiKey(apiKey);
+        this.dto.setModel(modelName);
+
         this.httpClient = httpClient;
         this.objectMapper = new ObjectMapper();
         this.markdownConverter = new MarkdownToHtmlConverter();
     }
 
+    @Override
     public String sendMessageWithImage(String userMessage, String base64Image, List<Map<String, String>> history) {
         try {
             String requestBody = createClaudeImageRequestBody(userMessage, base64Image, history);
-            String apiUrl = claudeConfig.getBaseUrl() + "/v1/messages";
+            String apiUrl = dto.getBaseUrl() + "/v1/messages";
             HttpPost httpPost = new HttpPost(apiUrl);
 
             log.debug("Sending Claude image request to: {}", apiUrl);
 
             httpPost.setHeader("Content-Type", "application/json");
-            httpPost.setHeader("x-api-key", claudeConfig.getApiKey());
+            httpPost.setHeader("x-api-key", dto.getApiKey());
             httpPost.setHeader("anthropic-version", "2023-06-01");
 
             httpPost.setEntity(new StringEntity(requestBody, StandardCharsets.UTF_8));
 
-            try (CloseableHttpResponse response = httpClient.execute(httpPost)) {
-                String responseBody = EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
-
-                if (response.getCode() == 200) {
-                    return parseClaudeResponse(responseBody);
-                } else if (response.getCode() == 429) {
-                    log.error("Claude API quota exceeded: {}", responseBody);
-                    return "Превышена квота Claude API. Пожалуйста, проверьте баланс в аккаунте Anthropic.";
-                } else if (response.getCode() == 401) {
-                    log.error("Claude API authentication error: {}", responseBody);
-                    return "Ошибка авторизации Claude API. Проверьте API ключ Anthropic.";
-                } else {
-                    log.error("Claude API error: Status {}, Response: {}", response.getCode(), responseBody);
-                    return "Ошибка Claude API (код: " + response.getCode() + "). Попробуйте позже.";
-                }
-            }
+            return executeRequest(httpPost);
         } catch (Exception e) {
             log.error("Error sending image to Claude", e);
             return "Извините, произошла ошибка при отправке изображения: " + e.getMessage();
@@ -72,33 +60,17 @@ public class AnthropicClient implements AiClient {
     public String sendTextMessage(String userMessage, List<Map<String, String>> history) {
         try {
             String requestBody = createClaudeRequestBody(userMessage, history);
-            String apiUrl = claudeConfig.getBaseUrl() + "/v1/messages";
+            String apiUrl = dto.getBaseUrl() + "/v1/messages";
             HttpPost httpPost = new HttpPost(apiUrl);
 
             log.debug("Sending Claude request to: {}", apiUrl);
 
             httpPost.setHeader("Content-Type", "application/json");
-            httpPost.setHeader("x-api-key", claudeConfig.getApiKey());
-            httpPost.setHeader("anthropic-version", claudeConfig.getApiVersion());
+            httpPost.setHeader("x-api-key", dto.getApiKey());
 
             httpPost.setEntity(new StringEntity(requestBody, StandardCharsets.UTF_8));
 
-            try (CloseableHttpResponse response = httpClient.execute(httpPost)) {
-                String responseBody = EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
-
-                if (response.getCode() == 200) {
-                    return parseClaudeResponse(responseBody);
-                } else if (response.getCode() == 429) {
-                    log.error("Claude API quota exceeded: {}", responseBody);
-                    return "Превышена квота Claude API. Пожалуйста, проверьте баланс в аккаунте Anthropic.";
-                } else if (response.getCode() == 401) {
-                    log.error("Claude API authentication error: {}", responseBody);
-                    return "Ошибка авторизации Claude API. Проверьте API ключ Anthropic.";
-                } else {
-                    log.error("Claude API error: Status {}, Response: {}", response.getCode(), responseBody);
-                    return "Ошибка Claude API (код: " + response.getCode() + "). Попробуйте позже.";
-                }
-            }
+            return executeRequest(httpPost);
         } catch (Exception e) {
             log.error("Error sending message to Claude", e);
             return "Извините, произошла ошибка при отправке сообщения: " + e.getMessage();
@@ -106,25 +78,22 @@ public class AnthropicClient implements AiClient {
     }
 
     private String createClaudeRequestBody(String userMessage, List<Map<String, String>> history) throws Exception {
-        String model = claudeConfig.getModel();
-        String systemPrompt = claudeConfig.getSystemPrompt();
+        String model = dto.getModel();
         List<Map<String, String>> messages = new ArrayList<>(history);
         messages.add(Map.of("role", "user", "content", userMessage));
 
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put("model", model);
         requestBody.put("max_tokens", 1000);
-        requestBody.put("system", systemPrompt);
         requestBody.put("messages", messages);
 
         String json = objectMapper.writeValueAsString(requestBody);
-        log.debug("Using Claude model: {} for request with system prompt {}", model, systemPrompt);
+        log.debug("Using Claude model: {} for request", model);
         return json;
     }
 
     private String createClaudeImageRequestBody(String userMessage, String base64Image, List<Map<String, String>> history) throws Exception {
-        String model = claudeConfig.getModel();
-        String systemPrompt = claudeConfig.getSystemPrompt();
+        String model = dto.getModel();
 
         // Добавляем историю
         List<Map<String, Object>> messages = new ArrayList<>();
@@ -149,12 +118,29 @@ public class AnthropicClient implements AiClient {
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put("model", model);
         requestBody.put("max_tokens", 1000);
-        requestBody.put("system", systemPrompt);
         requestBody.put("messages", messages);
 
         String json = objectMapper.writeValueAsString(requestBody);
         log.debug("Using Claude model: {} for image request", model);
         return json;
+    }
+
+    private String executeRequest(HttpPost httpPost) {
+        try (CloseableHttpResponse response = httpClient.execute(httpPost)) {
+            String responseBody = EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
+            log.debug("Received Claude response: {}", responseBody);
+
+            int status = response.getCode();
+            return switch (status) {
+                case 200 -> parseClaudeResponse(responseBody);
+                case 429 -> "Claude API quota exceeded.";
+                case 401 -> "Claude API authentication error. Check API key.";
+                default -> "Claude API error. Try again later";
+            };
+        } catch (Exception e) {
+            log.error("Error sending request to Claude", e);
+            return "Error sending request to Claude: " + e.getMessage();
+        }
     }
 
     private String parseClaudeResponse(String responseBody) throws Exception {
@@ -171,16 +157,5 @@ public class AnthropicClient implements AiClient {
         }
         log.warn("Could not parse Claude response: {}", responseBody);
         return "Извините, не удалось получить ответ от Claude";
-    }
-
-    public void close() {
-        try {
-            if (httpClient != null) {
-                httpClient.close();
-                log.info("HTTP client closed");
-            }
-        } catch (Exception e) {
-            log.error("Error closing HTTP client", e);
-        }
     }
 }

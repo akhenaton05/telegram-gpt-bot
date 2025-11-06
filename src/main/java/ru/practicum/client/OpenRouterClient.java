@@ -8,29 +8,28 @@ import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpResponse;
 import org.apache.hc.core5.http.io.entity.EntityUtils;
 import org.apache.hc.core5.http.io.entity.StringEntity;
-import org.springframework.stereotype.Component;
-import ru.practicum.config.OpenRouterConfig;
+import ru.practicum.dto.OpenRouterDto;
 import ru.practicum.utils.MarkdownToHtmlConverter;
 
 import java.nio.charset.StandardCharsets;
-import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 
 @Slf4j
-@Component
-public class OpenRouterClient implements AiClient {
-    private final OpenRouterConfig openRouterConfig;
+public class OpenRouterClient implements AiTextSender, AiImageSender {
+    private final OpenRouterDto dto;
     private final ObjectMapper objectMapper;
     private final CloseableHttpClient httpClient;
     private final MarkdownToHtmlConverter markdownConverter;
 
-    public OpenRouterClient(OpenRouterConfig openRouterConfig, CloseableHttpClient httpClient) {
-        this.openRouterConfig = openRouterConfig;
+    public OpenRouterClient(String baseUrl, String apiKey, String modelName, CloseableHttpClient httpClient) {
+        this.dto = new OpenRouterDto();
+        this.dto.setBaseUrl(baseUrl);
+        this.dto.setApiKey(apiKey);
+        this.dto.setModel(modelName);
+
         this.httpClient = httpClient;
         this.objectMapper = new ObjectMapper();
         this.markdownConverter = new MarkdownToHtmlConverter();
@@ -39,32 +38,17 @@ public class OpenRouterClient implements AiClient {
     @Override
     public String sendTextMessage(String userMessage, List<Map<String, String>> history) {
         try {
-            String requestBody = createOpenAiRequestBody(userMessage, history);
-            String apiUrl = openRouterConfig.getBaseUrl();
+            String requestBody = createOpenRouterRequestBody(userMessage, history);
+            String apiUrl = dto.getBaseUrl();
             HttpPost httpPost = new HttpPost(apiUrl);
 
             log.debug("Sending OpenRouter request to: {}", apiUrl);
 
             httpPost.setHeader("Content-Type", "application/json");
-            httpPost.setHeader("Authorization", "Bearer " + openRouterConfig.getApiKey());
+            httpPost.setHeader("Authorization", "Bearer " + dto.getApiKey());
             httpPost.setEntity(new StringEntity(requestBody, StandardCharsets.UTF_8));
 
-            try (CloseableHttpResponse response = httpClient.execute(httpPost)) {
-                String responseBody = EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
-                log.debug("Received OpenRouter response: {}", responseBody);
-                if (response.getCode() == 200) {
-                    return parseOpenRouterResponse(responseBody);
-                } else if (response.getCode() == 429) {
-                    log.error("OpenRouter API quota exceeded: {}", responseBody);
-                    return "🚫 Превышена квота OpenRouter API. Проверьте баланс в аккаунте OpenAI.";
-                } else if (response.getCode() == 401) {
-                    log.error("OpenRouter API authentication error: {}", responseBody);
-                    return "🔐 Ошибка авторизации OpenAI API. Проверьте API ключ OpenAI.";
-                } else {
-                    log.error("OpenRouter API error: Status {}, Response: {}", response.getCode(), responseBody);
-                    return "❌ Ошибка OpenRouter API (код: " + response.getCode() + "). Попробуйте позже.";
-                }
-            }
+            return executeRequest(httpPost);
         } catch (Exception e) {
             log.error("Error sending message to OpenRouter", e);
             return "Извините, произошла ошибка при отправке сообщения: " + e.getMessage();
@@ -74,50 +58,30 @@ public class OpenRouterClient implements AiClient {
     @Override
     public String sendMessageWithImage(String userMessage, String base64Image, List<Map<String, String>> history) {
         try {
-            String requestBody = createOpenAiImageRequestBody(userMessage, base64Image, history);
-            String apiUrl = openRouterConfig.getBaseUrl();
+            String requestBody = createOpenRouterImageRequestBody(userMessage, base64Image, history);
+            String apiUrl = dto.getBaseUrl();
             HttpPost httpPost = new HttpPost(apiUrl);
+
             log.debug("Sending OpenRouter image request to: {}", apiUrl);
+
             httpPost.setHeader("Content-Type", "application/json");
-            httpPost.setHeader("Authorization", "Bearer " + openRouterConfig.getApiKey());
+            httpPost.setHeader("Authorization", "Bearer " + dto.getApiKey());
             httpPost.setEntity(new StringEntity(requestBody, StandardCharsets.UTF_8));
-            try (CloseableHttpResponse response = httpClient.execute(httpPost)) {
-                String responseBody = EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
-                log.debug("Received OpenRouter response: {}", responseBody);
-                if (response.getCode() == 200) {
-                    return parseOpenRouterResponse(responseBody);
-                } else if (response.getCode() == 429) {
-                    log.error("OpenRouter API quota exceeded: {}", responseBody);
-                    return "🚫 Превышена квота OpenRouter API. Проверьте баланс в аккаунте OpenAI.";
-                } else if (response.getCode() == 401) {
-                    log.error("OpenRouter API authentication error: {}", responseBody);
-                    return "🔐 Ошибка авторизации OpenRouter API. Проверьте API ключ OpenAI.";
-                } else {
-                    log.error("OpenRouter API error: Status {}, Response: {}", response.getCode(), responseBody);
-                    return "❌ Ошибка OpenRouter API (код: " + response.getCode() + "). Попробуйте позже.";
-                }
-            }
+
+            return executeRequest(httpPost);
         } catch (Exception e) {
             log.error("Error sending image to OpenRouter", e);
             return "Извините, произошла ошибка при отправке изображения: " + e.getMessage();
         }
     }
 
-    private String createOpenAiRequestBody(String userMessage, List<Map<String, String>> history) throws Exception {
-        String model = openRouterConfig.getModel();
+    private String createOpenRouterRequestBody(String userMessage, List<Map<String, String>> history) throws Exception {
+        String model = dto.getModel();
         List<Map<String, Object>> plugins = new ArrayList<>();
 
-        plugins.add(Map.of("id", "web", "engine", "exa",  "max_results", 1));
+        plugins.add(Map.of("id", "web", "engine", "exa", "max_results", 1));
 
         List<Map<String, String>> messages = new ArrayList<>();
-
-        // Добавляем системное сообщение с текущей датой
-        LocalDate now = LocalDate.now();
-        String systemPrompt = String.format(
-                "Текущая дата: %s.",
-                now.format(DateTimeFormatter.ofPattern("dd MMMM yyyy", new Locale("ru")))
-        );
-        messages.add(Map.of("role", "system", "content", systemPrompt));
 
         // Добавляем историю
         if (history != null && !history.isEmpty()) {
@@ -137,21 +101,13 @@ public class OpenRouterClient implements AiClient {
         return json;
     }
 
-    private String createOpenAiImageRequestBody(String userMessage, String base64Image, List<Map<String, String>> history) throws Exception {
-        String model = openRouterConfig.getModel();
+    private String createOpenRouterImageRequestBody(String userMessage, String base64Image, List<Map<String, String>> history) throws Exception {
+        String model = dto.getModel();
         List<Map<String, Object>> plugins = new ArrayList<>();
 
-        plugins.add(Map.of("id", "web", "engine", "exa",  "max_results", 1));
+        plugins.add(Map.of("id", "web", "engine", "exa", "max_results", 1));
 
         List<Map<String, Object>> messages = new ArrayList<>();
-
-        // Добавляем системное сообщение с текущей датой
-        LocalDate now = LocalDate.now();
-        String systemPrompt = String.format(
-                "Текущая дата: %s. Ты умный помощник, который помогает пользователям с их вопросами и анализирует изображения.",
-                now.format(DateTimeFormatter.ofPattern("dd MMMM yyyy", new Locale("ru")))
-        );
-        messages.add(Map.of("role", "system", "content", systemPrompt));
 
         // Добавляем историю
         if (history != null) {
@@ -176,8 +132,26 @@ public class OpenRouterClient implements AiClient {
         requestBody.put("max_tokens", 3000);
 
         String json = objectMapper.writeValueAsString(requestBody);
-        log.debug("Using OpenAI model: {} for image request", model);
+        log.debug("Using OpenRouter model: {} for image request", model);
         return json;
+    }
+
+    private String executeRequest(HttpPost httpPost) {
+        try (CloseableHttpResponse response = httpClient.execute(httpPost)) {
+            String responseBody = EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
+            log.debug("Received OpenRouter response: {}", responseBody);
+
+            int status = response.getCode();
+            return switch (status) {
+                case 200 -> parseOpenRouterResponse(responseBody);
+                case 429 -> "OpenRouter quota exceeded. Check account balance.";
+                case 401 -> "Authorisation error OpenRouter API. Check API key.";
+                default -> "OpenRouter Error (code: " + response.getCode() + "). Try again later.";
+            };
+        } catch (Exception e) {
+            log.error("Error sending image to OpenRouter", e);
+            return "Error sending request to OpenRouter: " + e.getMessage();
+        }
     }
 
     private String parseOpenRouterResponse(String responseBody) throws Exception {
@@ -195,17 +169,5 @@ public class OpenRouterClient implements AiClient {
         }
         log.warn("Could not parse OpenRouter response: {}", responseBody);
         return "Извините, не удалось получить ответ от OpenRouter";
-    }
-
-    @Override
-    public void close() {
-        try {
-            if (httpClient != null) {
-                httpClient.close();
-                log.info("HTTP client closed");
-            }
-        } catch (Exception e) {
-            log.error("Error closing HTTP client", e);
-        }
     }
 }

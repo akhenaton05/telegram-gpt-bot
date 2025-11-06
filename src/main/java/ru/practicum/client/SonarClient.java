@@ -8,8 +8,7 @@ import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpResponse;
 import org.apache.hc.core5.http.io.entity.EntityUtils;
 import org.apache.hc.core5.http.io.entity.StringEntity;
-import org.springframework.stereotype.Component;
-import ru.practicum.config.SonarConfig;
+import ru.practicum.dto.SonarDto;
 import ru.practicum.utils.MarkdownToHtmlConverter;
 
 import java.nio.charset.StandardCharsets;
@@ -19,15 +18,18 @@ import java.util.List;
 import java.util.Map;
 
 @Slf4j
-@Component
-public class SonarClient implements AiClient {
-    private final SonarConfig sonarConfig;
+public class SonarClient implements AiTextSender, AiImageSender {
+    private final SonarDto dto;
     private final ObjectMapper objectMapper;
     private final CloseableHttpClient httpClient;
     private final MarkdownToHtmlConverter markdownConverter;
 
-    public SonarClient(SonarConfig sonarConfig, CloseableHttpClient httpClient) {
-        this.sonarConfig = sonarConfig;
+    public SonarClient(String baseUrl, String apiKey, String modelName, CloseableHttpClient httpClient) {
+        this.dto = new SonarDto();
+        this.dto.setBaseUrl(baseUrl);
+        this.dto.setApiKey(apiKey);
+        this.dto.setModel(modelName);
+
         this.httpClient = httpClient;
         this.objectMapper = new ObjectMapper();
         this.markdownConverter = new MarkdownToHtmlConverter();
@@ -37,31 +39,16 @@ public class SonarClient implements AiClient {
     public String sendTextMessage(String userMessage, List<Map<String, String>> history) {
         try {
             String requestBody = createSonarRequestBody(userMessage, history);
-            String apiUrl = sonarConfig.getBaseUrl() + "/chat/completions";
+            String apiUrl = dto.getBaseUrl();
             HttpPost httpPost = new HttpPost(apiUrl);
 
             log.info("Sending Sonar request to: {}", apiUrl);
 
             httpPost.setHeader("Content-Type", "application/json");
-            httpPost.setHeader("Authorization", "Bearer " + sonarConfig.getApiKey());
+            httpPost.setHeader("Authorization", "Bearer " + dto.getApiKey());
             httpPost.setEntity(new StringEntity(requestBody, StandardCharsets.UTF_8));
 
-            try (CloseableHttpResponse response = httpClient.execute(httpPost)) {
-                String responseBody = EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
-                log.debug("Received Sonar response: {}", responseBody);
-                if (response.getCode() == 200) {
-                    return parseSonarResponse(responseBody);
-                } else if (response.getCode() == 429) {
-                    log.error("Sonar API quota exceeded: {}", responseBody);
-                    return "🚫 Превышена квота Sonar API. Проверьте баланс в аккаунте Perplexity.";
-                } else if (response.getCode() == 401) {
-                    log.error("Sonar API authentication error: {}", responseBody);
-                    return "🔐 Ошибка авторизации Sonar API. Проверьте API ключ Perplexity.";
-                } else {
-                    log.error("Sonar API error: Status {}, Response: {}", response.getCode(), responseBody);
-                    return "❌ Ошибка Sonar API (код: " + response.getCode() + "). Попробуйте позже.";
-                }
-            }
+            return executeRequest(httpPost);
         } catch (Exception e) {
             log.error("Error sending message to Sonar", e);
             return "Извините, произошла ошибка при отправке сообщения: " + e.getMessage();
@@ -72,31 +59,16 @@ public class SonarClient implements AiClient {
     public String sendMessageWithImage(String userMessage, String base64Image, List<Map<String, String>> history) {
         try {
             String requestBody = createSonarImageRequestBody(userMessage, base64Image, history);
-            String apiUrl = sonarConfig.getBaseUrl() + "/chat/completions";
+            String apiUrl = dto.getBaseUrl();
             HttpPost httpPost = new HttpPost(apiUrl);
 
             log.debug("Sending Sonar image request to: {}", apiUrl);
 
             httpPost.setHeader("Content-Type", "application/json");
-            httpPost.setHeader("Authorization", "Bearer " + sonarConfig.getApiKey());
+            httpPost.setHeader("Authorization", "Bearer " + dto.getApiKey());
             httpPost.setEntity(new StringEntity(requestBody, StandardCharsets.UTF_8));
 
-            try (CloseableHttpResponse response = httpClient.execute(httpPost)) {
-                String responseBody = EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
-                log.debug("Received Sonar response: {}", responseBody);
-                if (response.getCode() == 200) {
-                    return parseSonarResponse(responseBody);
-                } else if (response.getCode() == 429) {
-                    log.error("Sonar API quota exceeded: {}", responseBody);
-                    return "🚫 Превышена квота Sonar API. Проверьте баланс в аккаунте Perplexity.";
-                } else if (response.getCode() == 401) {
-                    log.error("Sonar API authentication error: {}", responseBody);
-                    return "🔐 Ошибка авторизации Sonar API. Проверьте API ключ Perplexity.";
-                } else {
-                    log.error("Sonar API error: Status {}, Response: {}", response.getCode(), responseBody);
-                    return "❌ Ошибка Sonar API (код: " + response.getCode() + "). Попробуйте позже.";
-                }
-            }
+            return executeRequest(httpPost);
         } catch (Exception e) {
             log.error("Error sending image to Sonar", e);
             return "Извините, произошла ошибка при отправке изображения: " + e.getMessage();
@@ -136,14 +108,13 @@ public class SonarClient implements AiClient {
 
         // Исправляем чередование user/assistant для диалога
         if (!conversationMessages.isEmpty()) {
-            String expectedRole = "user"; // Диалог должен начинаться с user
+            String expectedRole = "user";
 
             for (Map<String, String> message : conversationMessages) {
                 String role = message.get("role");
                 String content = message.get("content");
 
                 if (expectedRole.equals(role)) {
-                    // Роль соответствует ожидаемой - добавляем сообщение
                     fixedMessages.add(message);
                     expectedRole = expectedRole.equals("user") ? "assistant" : "user";
                 } else if ("user".equals(role) && "assistant".equals(expectedRole)) {
@@ -152,9 +123,7 @@ public class SonarClient implements AiClient {
                     fixedMessages.add(message);
                     expectedRole = "assistant";
                 } else if ("assistant".equals(role) && "user".equals(expectedRole)) {
-                    // Лишний assistant ответ - пропускаем
                     log.debug("Skipping redundant assistant message: {}", content.substring(0, Math.min(50, content.length())));
-                    continue;
                 }
             }
         }
@@ -164,7 +133,7 @@ public class SonarClient implements AiClient {
     }
 
     private String createSonarRequestBody(String userMessage, List<Map<String, String>> history) throws Exception {
-        String model = sonarConfig.getModel();
+        String model = dto.getModel();
         List<Map<String, Object>> messages = new ArrayList<>();
 
         // Исправляем структуру сообщений для Perplexity API
@@ -190,7 +159,7 @@ public class SonarClient implements AiClient {
     }
 
     private String createSonarImageRequestBody(String userMessage, String base64Image, List<Map<String, String>> history) throws Exception {
-        String model = sonarConfig.getModel();
+        String model = dto.getModel();
         List<Map<String, Object>> messages = new ArrayList<>();
 
         // Исправляем структуру сообщений для Perplexity API
@@ -214,7 +183,7 @@ public class SonarClient implements AiClient {
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put("model", model);
         requestBody.put("messages", messages);
-        requestBody.put("max_tokens", 1000);
+        requestBody.put("max_tokens", 3000);
         requestBody.put("temperature", 0.7);
 
         String json = objectMapper.writeValueAsString(requestBody);
@@ -222,10 +191,28 @@ public class SonarClient implements AiClient {
         return json;
     }
 
+    private String executeRequest(HttpPost httpPost) {
+        try (CloseableHttpResponse response = httpClient.execute(httpPost)) {
+            String responseBody = EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
+            log.debug("Received Sonar response: {}", responseBody);
+
+            int status = response.getCode();
+            return switch (status) {
+                case 200 -> parseSonarResponse(responseBody);
+                case 429 -> "Sonar quota exceeded. Check account balance.";
+                case 401 -> "Authorisation error Sonar API. Check API key.";
+                default -> "Sonar Error (code: " + response.getCode() + "). Try again later.";
+            };
+        } catch (Exception e) {
+            log.error("Error sending image to Sonar", e);
+            return "Error sending request to Sonar: " + e.getMessage();
+        }
+    }
+
     private String parseSonarResponse(String responseBody) throws Exception {
         JsonNode jsonNode = objectMapper.readTree(responseBody);
         JsonNode choices = jsonNode.get("choices");
-        if (choices != null && choices.isArray() && choices.size() > 0) {
+        if (choices != null && choices.isArray() && !choices.isEmpty()) {
             JsonNode firstChoice = choices.get(0);
             JsonNode message = firstChoice.get("message");
             if (message != null && message.has("content")) {
@@ -237,17 +224,5 @@ public class SonarClient implements AiClient {
         }
         log.warn("Could not parse Sonar response: {}", responseBody);
         return "Извините, не удалось получить ответ от Sonar";
-    }
-
-    @Override
-    public void close() {
-        try {
-            if (httpClient != null) {
-                httpClient.close();
-                log.info("HTTP client closed");
-            }
-        } catch (Exception e) {
-            log.error("Error closing HTTP client", e);
-        }
     }
 }

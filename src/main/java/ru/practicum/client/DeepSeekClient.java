@@ -8,24 +8,25 @@ import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpResponse;
 import org.apache.hc.core5.http.io.entity.EntityUtils;
 import org.apache.hc.core5.http.io.entity.StringEntity;
-import org.springframework.stereotype.Component;
-import ru.practicum.config.DeepSeekConfig;
-import ru.practicum.config.OpenAiConfig;
+import ru.practicum.dto.DeepSeekDto;
 import ru.practicum.utils.MarkdownToHtmlConverter;
 
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 @Slf4j
-@Component
-public class DeepSeekClient implements AiClient {
-    private final DeepSeekConfig deepSeekConfig;
+public class DeepSeekClient implements AiTextSender, AiImageSender {
+    private final DeepSeekDto dto;
     private final ObjectMapper objectMapper;
     private final CloseableHttpClient httpClient;
     private final MarkdownToHtmlConverter markdownConverter;
 
-    public DeepSeekClient(DeepSeekConfig deepSeekConfig, CloseableHttpClient httpClient) {
-        this.deepSeekConfig = deepSeekConfig;
+    public DeepSeekClient(String baseUrl, String apiKey, String modelName, CloseableHttpClient httpClient) {
+        this.dto = new DeepSeekDto();
+        this.dto.setBaseUrl(baseUrl);
+        this.dto.setApiKey(apiKey);
+        this.dto.setModel(modelName);
+
         this.httpClient = httpClient;
         this.objectMapper = new ObjectMapper();
         this.markdownConverter = new MarkdownToHtmlConverter();
@@ -35,33 +36,19 @@ public class DeepSeekClient implements AiClient {
     public String sendTextMessage(String userMessage, List<Map<String, String>> history) {
         try {
             String requestBody = createDeepSeekTextBody(userMessage, history);
-            String apiUrl = deepSeekConfig.getBaseUrl() + "/chat/completions";
+            String apiUrl = dto.getBaseUrl();
             HttpPost httpPost = new HttpPost(apiUrl);
 
             log.debug("Sending DeepSeek request to: {}", apiUrl);
+
             httpPost.setHeader("Content-Type", "application/json");
-            httpPost.setHeader("Authorization", "Bearer " + deepSeekConfig.getApiKey());
+            httpPost.setHeader("Authorization", "Bearer " + dto.getApiKey());
             httpPost.setEntity(new StringEntity(requestBody, StandardCharsets.UTF_8));
 
-            try (CloseableHttpResponse response = httpClient.execute(httpPost)) {
-                String responseBody = EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
-                log.debug("Received DeepSeek response: {}", responseBody);
-                if (response.getCode() == 200) {
-                    return parseDeepSeekResponse(responseBody);
-                } else if (response.getCode() == 429) {
-                    log.error("DeepSeek API quota exceeded: {}", responseBody);
-                    return "🚫 Превышена квота DeepSeek API. Проверьте баланс в аккаунте DeepSeek.";
-                } else if (response.getCode() == 401) {
-                    log.error("DeepSeek API authentication error: {}", responseBody);
-                    return "🔐 Ошибка авторизации DeepSeek API. Проверьте API ключ.";
-                } else {
-                    log.error("DeepSeek API error: Status {}, Response: {}", response.getCode(), responseBody);
-                    return "❌ Ошибка DeepSeek API (код: " + response.getCode() + "). Попробуйте позже.";
-                }
-            }
+            return executeRequest(httpPost);
         } catch (Exception e) {
             log.error("Error sending message to DeepSeek", e);
-            return "Извините, произошла ошибка при отправке сообщения: " + e.getMessage();
+            return "Error sending message to DeepSeek: " + e.getMessage();
         }
     }
 
@@ -69,30 +56,16 @@ public class DeepSeekClient implements AiClient {
     public String sendMessageWithImage(String userMessage, String base64Image, List<Map<String, String>> history) {
         try {
             String requestBody = createDeepSeekImageBody(userMessage, base64Image, history);
-            String apiUrl = deepSeekConfig.getBaseUrl() + "/chat/completions";
+            String apiUrl = dto.getBaseUrl();
             HttpPost httpPost = new HttpPost(apiUrl);
 
             log.debug("Sending DeepSeek image request to: {}", apiUrl);
+
             httpPost.setHeader("Content-Type", "application/json");
-            httpPost.setHeader("Authorization", "Bearer " + deepSeekConfig.getApiKey());
+            httpPost.setHeader("Authorization", "Bearer " + dto.getApiKey());
             httpPost.setEntity(new StringEntity(requestBody, StandardCharsets.UTF_8));
 
-            try (CloseableHttpResponse response = httpClient.execute(httpPost)) {
-                String responseBody = EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
-                log.debug("Received DeepSeek response: {}", responseBody);
-                if (response.getCode() == 200) {
-                    return parseDeepSeekResponse(responseBody);
-                } else if (response.getCode() == 429) {
-                    log.error("DeepSeek API quota exceeded: {}", responseBody);
-                    return "🚫 Превышена квота DeepSeek API. Проверьте баланс в аккаунте DeepSeek.";
-                } else if (response.getCode() == 401) {
-                    log.error("DeepSeek API authentication error: {}", responseBody);
-                    return "🔐 Ошибка авторизации DeepSeek API. Проверьте API ключ.";
-                } else {
-                    log.error("DeepSeek API error: Status {}, Response: {}", response.getCode(), responseBody);
-                    return "❌ Ошибка DeepSeek API (код: " + response.getCode() + "). Попробуйте позже.";
-                }
-            }
+            return executeRequest(httpPost);
         } catch (Exception e) {
             log.error("Error sending image to DeepSeek", e);
             return "Извините, произошла ошибка при отправке изображения: " + e.getMessage();
@@ -100,7 +73,7 @@ public class DeepSeekClient implements AiClient {
     }
 
     private String createDeepSeekTextBody(String userMessage, List<Map<String, String>> history) throws Exception {
-        String model = deepSeekConfig.getModel();
+        String model = dto.getModel();
         List<Map<String, String>> messages = new ArrayList<>();
         messages.add(Map.of("role", "user", "content", userMessage));
 
@@ -115,7 +88,7 @@ public class DeepSeekClient implements AiClient {
     }
 
     private String createDeepSeekImageBody(String userMessage, String base64Image, List<Map<String, String>> history) throws Exception {
-        String model = deepSeekConfig.getModel();
+        String model = dto.getModel();
         List<Map<String, Object>> messages = new ArrayList<>();
         messages.add(Map.of("role", "system", "content", "Ты дружелюбный ассистент, отвечай кратко и на русском."));
         for (Map<String, String> h : history) {
@@ -139,10 +112,28 @@ public class DeepSeekClient implements AiClient {
         return json;
     }
 
+    private String executeRequest(HttpPost httpPost) {
+        try (CloseableHttpResponse response = httpClient.execute(httpPost)) {
+            String responseBody = EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
+            log.debug("Received DeepSeek response: {}", responseBody);
+
+            int status = response.getCode();
+            return switch (status) {
+                case 200 -> parseDeepSeekResponse(responseBody);
+                case 429 -> "DeepSeek quota exceeded. Check account balance.";
+                case 401 -> "Authorisation error DeepSeek API. Check API key.";
+                default -> "DeepSeek Error (code: " + response.getCode() + "). Try again later.";
+            };
+        } catch (Exception e) {
+            log.error("Error sending request to DeepSeek", e);
+            return "Error sending request to DeepSeek: " + e.getMessage();
+        }
+    }
+
     private String parseDeepSeekResponse(String responseBody) throws Exception {
         JsonNode jsonNode = objectMapper.readTree(responseBody);
         JsonNode choices = jsonNode.get("choices");
-        if (choices != null && choices.isArray() && choices.size() > 0) {
+        if (choices != null && choices.isArray() && !choices.isEmpty()) {
             JsonNode message = choices.get(0).get("message");
             if (message != null && message.has("content")) {
                 String result = message.get("content").asText().trim();
@@ -152,18 +143,6 @@ public class DeepSeekClient implements AiClient {
             }
         }
         log.warn("Could not parse DeepSeek response: {}", responseBody);
-        return "Извините, не удалось получить ответ от DeepSeek";
-    }
-
-    @Override
-    public void close() {
-        try {
-            if (httpClient != null) {
-                httpClient.close();
-                log.info("HTTP client closed");
-            }
-        } catch (Exception e) {
-            log.error("Error closing HTTP client", e);
-        }
+        return "Could not parse DeepSeek response";
     }
 }
