@@ -88,14 +88,7 @@
    spring:
      main:
        web-application-type: none
-
-   # Конфигурация Claude API
-   claude:
-     base-url: "${CLAUDE_BASE_URL:https://api.anthropic.com}"
-     api-key: "${CLAUDE_API_KEY:your-claude-api-key}"
-     model: "${CLAUDE_MODEL:claude-3-haiku-20240307}"
-     system-prompt: "Ты дружелюбный ассистент, отвечай кратко и на русском."
-     api-version: "2023-06-01"
+   
    ai:
      default-model: "gpt-5-nano"
    # Провайдеры
