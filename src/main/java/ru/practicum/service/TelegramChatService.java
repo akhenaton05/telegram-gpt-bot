@@ -344,10 +344,17 @@ public class TelegramChatService extends TelegramLongPollingBot{
         }
     }
 
-    private void handleDigestAdd(Long chatId, String fullCommand) {
-        String topic = extractTopicFromCommand(fullCommand);
-        if (topic == null || topic.isEmpty()) {
-            sendMessage(chatId, "Укажите тему: /digest_add погода");
+    private void handleDigestAdd(Long chatId, String topic) {
+        if (topic == null || topic.isBlank()) {
+            sendMessage(chatId, """
+            Укажите тему для дайджеста
+            
+            <b>Примеры:</b>
+            /digest_add погода
+            /digest_add криптовалюты
+            /digest_add российский рынок
+            /digest_add технологии
+            """);
             return;
         }
 
@@ -371,13 +378,5 @@ public class TelegramChatService extends TelegramLongPollingBot{
         } else {
             sendMessage(chatId, "Тема не найдена");
         }
-    }
-
-    private String extractTopicFromCommand(String fullCommand) {
-        if (fullCommand == null || !fullCommand.startsWith("/digest_add")) {
-            return null;
-        }
-        String afterPrefix = fullCommand.substring("/digest_add".length()).trim();
-        return afterPrefix.isEmpty() ? null : afterPrefix;
     }
 }
