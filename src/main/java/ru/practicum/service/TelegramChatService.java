@@ -1,6 +1,6 @@
 package ru.practicum.service;
 
-import jakarta.annotation.PreDestroy;
+import lombok.AllArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -17,6 +17,7 @@ import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import ru.practicum.client.*;
 import ru.practicum.config.*;
 import ru.practicum.utils.ConversationContext;
+import ru.practicum.utils.DigestContext;
 import ru.practicum.utils.MessageSplitter;
 
 import java.io.InputStream;
@@ -27,25 +28,14 @@ import java.util.List;
 
 @Slf4j
 @Service
-public class TelegramChatService extends TelegramLongPollingBot {
+@AllArgsConstructor
+public class TelegramChatService extends TelegramLongPollingBot{
     private final TelegramBotConfig telegramBotConfig;
     private final ProxyConfig proxyConfig;
     private final ConversationContext context;
     private final AiClientFactory clientFactory;
     private final MessageSplitter messageSplitter;
-
-    public TelegramChatService(
-            TelegramBotConfig telegramBotConfig,
-            ProxyConfig proxyConfig,
-            ConversationContext context,
-            AiClientFactory clientFactory,
-            MessageSplitter messageSplitter) {
-        this.telegramBotConfig = telegramBotConfig;
-        this.proxyConfig = proxyConfig;
-        this.context = context;
-        this.clientFactory = clientFactory;
-        this.messageSplitter = messageSplitter;
-    }
+    private final DigestContext digestContext;
 
     @Override
     public String getBotUsername() {
@@ -140,7 +130,12 @@ public class TelegramChatService extends TelegramLongPollingBot {
     }
 
     private void handleCommand(Long chatId, String command) throws TelegramApiException {
-        switch (command) {
+        // Разбиваем команду на части: команда + аргументы
+        String[] parts = command.trim().split("\\s+", 2);
+        String cmd = parts[0].toLowerCase(); // команда (например, /digest_add)
+        String arg = parts.length > 1 ? parts[1] : null; // аргумент (например, "погода")
+
+        switch (cmd) {
             case "/start" -> sendStartMessage(chatId);
             case "/info" -> sendInfo(chatId);
             case "/history" -> sendMessage(chatId, "📝 Текущий контекст:\n" + context.getHistory(chatId));
@@ -149,17 +144,36 @@ public class TelegramChatService extends TelegramLongPollingBot {
                 sendMessage(chatId, "🧹 Контекст беседы очищен.");
             }
             case "/model" -> execute(createModelSelectionMenu(chatId));
-            default -> sendMessage(chatId, "Неизвестная команда.\n\n" +
-                    "Доступные команды:\n" +
-                    "/start - справка по использованию\n" +
-                    "/info - информация о боте\n" +
-                    "/model - выбор модели\n" +
-                    "/history - история контекста\n" +
-                    "/clear - очистить контекст");
+
+            // Команды дайджеста
+            case "/digest_add" -> handleDigestAdd(chatId, arg);
+            case "/digest_remove" -> handleDigestRemove(chatId, arg);
+            case "/digest_list" -> sendMessage(chatId, digestContext.getTopicsFormatted(chatId));
+            case "/digest_clear" -> {
+                digestContext.clearTopics(chatId);
+                sendMessage(chatId, "🧹 Все темы дайджеста удалены");
+            }
+
+            default -> sendMessage(chatId, """
+                Неизвестная команда.
+                
+                📋 <b>Основные команды:</b>
+                /start - справка по использованию
+                /info - информация о боте
+                /model - выбор модели
+                /history - история контекста
+                /clear - очистить контекст
+                
+                📰 <b>Дайджест:</b>
+                /digest_add <тема> - добавить тему
+                /digest_remove <тема> - удалить тему
+                /digest_list - показать темы
+                /digest_clear - очистить все темы
+                """);
         }
     }
 
-    private void sendMessage(Long chatId, String text) {
+    public void sendMessage(Long chatId, String text) {
         final int TG_LIMIT = 4096;
         List<String> chunks = messageSplitter.splitMessageForTelegram(text, TG_LIMIT);
 
@@ -328,5 +342,42 @@ public class TelegramChatService extends TelegramLongPollingBot {
         } else {
             log.warn("Unknown callback data: {}", callData);
         }
+    }
+
+    private void handleDigestAdd(Long chatId, String fullCommand) {
+        String topic = extractTopicFromCommand(fullCommand);
+        if (topic == null || topic.isEmpty()) {
+            sendMessage(chatId, "Укажите тему: /digest_add погода");
+            return;
+        }
+
+        if (!digestContext.canAddMoreTopics(chatId)) {
+            sendMessage(chatId, "Достигнут лимит тем (максимум 5)");
+            return;
+        }
+
+        digestContext.addTopic(chatId, topic);
+        sendMessage(chatId, "Тема добавлена: " + topic);
+    }
+
+    private void handleDigestRemove(Long chatId, String topic) {
+        if (topic == null || topic.isEmpty()) {
+            sendMessage(chatId, "Укажите тему: /digest_remove погода");
+            return;
+        }
+
+        if (digestContext.removeTopic(chatId, topic)) {
+            sendMessage(chatId, "Тема удалена: " + topic);
+        } else {
+            sendMessage(chatId, "Тема не найдена");
+        }
+    }
+
+    private String extractTopicFromCommand(String fullCommand) {
+        if (fullCommand == null || !fullCommand.startsWith("/digest_add")) {
+            return null;
+        }
+        String afterPrefix = fullCommand.substring("/digest_add".length()).trim();
+        return afterPrefix.isEmpty() ? null : afterPrefix;
     }
 }
